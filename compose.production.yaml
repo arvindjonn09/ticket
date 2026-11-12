@@ -1,0 +1,123 @@
+name: astrama-production
+x-api-env: &runtime
+  NODE_ENV: production
+  APP_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN}
+  PORT: 4311
+  DATABASE_URL: postgresql://astrama_app:${APP_DB_PASSWORD:?Set URL-safe APP_DB_PASSWORD}@db:5432/astrama
+  MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set private stable MFA_ENCRYPTION_KEY}
+  S3_ENDPOINT: http://storage:9000
+  S3_BUCKET: astrama-attachments
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY}
+  CLAMAV_HOST: scanner
+x-mail-env: &mail
+  SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:?Set SMTP_USER}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
+  SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+services:
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: astrama
+      POSTGRES_USER: astrama_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set URL-safe POSTGRES_PASSWORD}
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astrama_owner -d astrama"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  setup:
+    image: astrama-setup:${RELEASE_TAG:-local}
+    build: { context: ., dockerfile: infra/Dockerfile, target: api }
+    command: ["sh", "-c", "pnpm db:bootstrap && pnpm db:migrate && node apps/api/dist/storage-init.js"]
+    environment:
+      <<: *runtime
+      MIGRATION_DATABASE_URL: postgresql://astrama_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/astrama
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
+    depends_on: { db: { condition: service_healthy }, storage: { condition: service_started } }
+  api:
+    image: astrama-api:${RELEASE_TAG:-local}
+    build: { context: ., dockerfile: infra/Dockerfile, target: api-production }
+    environment:
+      <<: *runtime
+      TRUST_PROXY: "1"
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4311/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    depends_on: { setup: { condition: service_completed_successfully } }
+    restart: unless-stopped
+  worker:
+    image: astrama-api:${RELEASE_TAG:-local}
+    command: ["node", "dist/notification-worker.js"]
+    environment:
+      <<: [*runtime, *mail]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "dist/worker-health.js"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    depends_on: { setup: { condition: service_completed_successfully } }
+    restart: unless-stopped
+  web:
+    image: astrama-web:${RELEASE_TAG:-local}
+    build: { context: ., dockerfile: infra/Dockerfile, target: web }
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
+      NGINX_ENVSUBST_FILTER: APP_DOMAIN
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./infra/nginx.production.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${TLS_DIRECTORY:?Set absolute TLS_DIRECTORY}:/etc/astrama-tls:ro
+    depends_on: { api: { condition: service_healthy } }
+    restart: unless-stopped
+  storage:
+    image: rustfs/rustfs@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes: ["files:/data"]
+    restart: unless-stopped
+  scanner:
+    image: clamav/clamav@sha256:45fe5149fbee5a46509c9848ef20d0c354b7b2323c9369f285939a37cf33422a
+    volumes: ["signatures:/var/lib/clamav"]
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 20
+    restart: unless-stopped
+  monitor:
+    image: astrama-api:${RELEASE_TAG:-local}
+    profiles: [operations]
+    command: ["node", "dist/operations-check.js", "--notify"]
+    environment:
+      <<: [*runtime, *mail]
+      OPERATOR_ALERT_EMAIL: ${OPERATOR_ALERT_EMAIL:-}
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  database:
+  files:
+  signatures:

@@ -19,6 +19,7 @@ You are the QA engineer for a commercial, multi-tenant ticketing product. Your r
 - Internal content (work notes, resolution, internal attachments) never appears in employee API responses, emails (check Mailpit), or exports.
 - E2E journeys: employee submits incident → routed → agent claims → public reply → resolve → employee confirms; service request with manager + VP approval; rejection; admin adds category + mapping and a new ticket routes without a release.
 - Accessibility: axe scan on each main screen.
+- Plan section 23 gates: cross-tenant foreign-key rejection and independent numbering; missing-context/pooled-connection/worker RLS checks using runtime roles; outbox rollback and enqueue crash recovery; tenant/actor-scoped idempotency; terminal-state messages/uploads; expired, cross-tenant, inactive, self-approving, and chained delegates. Follow the scoped task packet in `orchestrator.md` and do not repeat unrelated completed checks.
 
 Use real PostgreSQL, not mocks. Make tests deterministic (fixed clock, seeded data, no sleeps; poll with timeouts).
 

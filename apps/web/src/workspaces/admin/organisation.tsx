@@ -9,14 +9,14 @@ import type {
   AdminSubcategory,
   SessionView,
 } from "@astrama/contracts";
-import { api, ApiError } from "./api";
-import { updateSession } from "./session";
-import { UsersPanel, SettingsPanel } from "./people";
-import { RequestItems } from "./request-admin";
-import { ApprovalCorrections } from "./completion";
-import { AutomationPanel } from "./automation";
-import { DataPolicyPanel } from "./data-policy";
-import { OperationsPanel } from "./operations";
+import { api, ApiError } from "../../api";
+import { updateSession } from "../../session";
+import { UsersPanel, SettingsPanel } from "../employee/people";
+import { RequestItems } from "../../request-admin";
+import { ApprovalCorrections } from "../approver/completion";
+import { AutomationPanel } from "../../automation";
+import { DataPolicyPanel } from "../../data-policy";
+import { OperationsPanel } from "../../operations";
 
 export function AuthenticatorSetup({ session }: { session: SessionView }) {
   const { t } = useTranslation();

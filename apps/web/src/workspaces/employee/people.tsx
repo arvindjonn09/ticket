@@ -1,12 +1,12 @@
-import { displayDate } from "./dates";
+import { displayDate } from "../../dates";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api } from "./api";
-import { ErrorNotice } from "./completion";
-import { updateSession } from "./session";
-import type { SessionView } from "./types";
+import { api } from "../../api";
+import { ErrorNotice } from "../approver/completion";
+import { updateSession } from "../../session";
+import type { SessionView } from "../../types";
 
 type User = {
   id: string;

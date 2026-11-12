@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api, ApiError } from "./api";
-import { minorCost } from "./money";
-import { ErrorNotice, type RequestItem } from "./completion";
-import type { Catalog, SessionView, TicketDetail } from "./types";
+import { api, ApiError } from "../../api";
+import { minorCost } from "../../money";
+import { ErrorNotice, type RequestItem } from "../approver/completion";
+import type { Catalog, SessionView, TicketDetail } from "../../types";
 
 export function TicketManagement({
   session,

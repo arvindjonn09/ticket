@@ -7,7 +7,7 @@ import {
   type SessionView,
 } from "@astrama/contracts";
 import { api } from "./api";
-import { ErrorNotice } from "./completion";
+import { ErrorNotice } from "./workspaces/approver/completion";
 import i18n from "./i18n";
 
 i18n.addResourceBundle(

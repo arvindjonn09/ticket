@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AdminConfig, SessionView } from "@astrama/contracts";
 import { api } from "./api";
 import { majorCost, minorCost } from "./money";
-import { ErrorNotice, type RequestItem } from "./completion";
+import { ErrorNotice, type RequestItem } from "./workspaces/approver/completion";
 
 export function RequestItems({ session, config }: { session: SessionView; config: AdminConfig }) {
   const { t } = useTranslation();

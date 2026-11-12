@@ -1,11 +1,11 @@
-import { displayDate } from "./dates";
+import { displayDate } from "../../dates";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api, ApiError } from "./api";
-import { money } from "./money";
-import type { Catalog, SessionView, TicketDetail } from "./types";
+import { api, ApiError } from "../../api";
+import { money } from "../../money";
+import type { Catalog, SessionView, TicketDetail } from "../../types";
 
 type Person = { id: string; name: string };
 export type RequestItem = {

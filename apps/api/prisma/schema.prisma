@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+  directUrl = env("MIGRATION_DATABASE_URL")
+}
+model Tenant {
+  id String @id @default(uuid()) @db.Uuid
+  slug String @unique
+  name String
+  brandName String @map("brand_name")
+  active Boolean @default(true)
+  incidentPrefix String @default("INC") @map("incident_prefix")
+  requestPrefix String @default("SR") @map("request_prefix")
+  revision Int @default(0)
+  timezone String @default("Australia/Sydney")
+  locale String @default("en-AU")
+  primaryColour String @default("#2563eb") @map("primary_colour")
+  defaultPriority String @default("P3") @map("default_priority")
+  defaultSeverity String @default("S3") @map("default_severity")
+  users User[]
+  departments Department[]
+  categories Category[]
+  counters Counter[]
+  tickets Ticket[]
+  @@map("tenants")
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  email String
+  passwordHash String @map("password_hash")
+  role String
+  active Boolean @default(true)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  revision Int @default(0)
+  approverEligible Boolean @default(false) @map("approver_eligible")
+  isVp Boolean @default(false) @map("is_vp")
+  managerId String? @map("manager_id") @db.Uuid
+  manager User? @relation("manager", fields: [tenantId, managerId], references: [tenantId, id])
+  reports User[] @relation("manager")
+  homeDepartment String @default("") @map("home_department")
+  phone String @default("")
+  jobTitle String @default("") @map("job_title")
+  invitationHash String? @unique @map("invitation_hash")
+  invitationExpiresAt DateTime? @map("invitation_expires_at") @db.Timestamptz(6)
+  invitedAt DateTime? @map("invited_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  requestedTickets Ticket[] @relation("requestedFor")
+  approvals Approval[] @relation("approver")
+  decisions Approval[] @relation("decisionMaker")
+  delegations ApprovalDelegation[] @relation("delegator")
+  delegatedTo ApprovalDelegation[] @relation("delegate")
+  vpItems CatalogItem[] @relation("vp")
+  alternateItems CatalogItem[] @relation("alternate")
+  ownedQueues Department[] @relation("queueOwner")
+  substituteQueues Department[] @relation("substitute")
+  attachments Attachment[]
+  deliveries NotificationDelivery[]
+  invitationMails InvitationMail[]
+  mfaSecret String? @map("mfa_secret")
+  mfaEnrolled Boolean @default(false) @map("mfa_enrolled")
+  mfaLastStep Int @default(-1) @map("mfa_last_step")
+  mfaFailures Int @default(0) @map("mfa_failures")
+  mfaLockedUntil DateTime? @map("mfa_locked_until") @db.Timestamptz(6)
+  mfaPendingSessionId String? @map("mfa_pending_session_id") @db.Uuid
+  mfaPendingExpiresAt DateTime? @map("mfa_pending_expires_at") @db.Timestamptz(6)
+  configAudits ConfigAudit[]
+  memberships Membership[]
+  sessions Session[]
+  calledTickets Ticket[] @relation("caller")
+  submittedTickets Ticket[] @relation("submitter")
+  assignedTickets Ticket[] @relation("assignee")
+  activities Activity[]
+  audits Audit[]
+  idempotency Idempotency[]
+  @@unique([tenantId, id])
+  @@unique([tenantId, email])
+  @@map("users")
+}
+model Department {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  active Boolean @default(true)
+  isTriage Boolean @default(false) @map("is_triage")
+  queueOwnerId String? @map("queue_owner_id") @db.Uuid
+  substituteId String? @map("substitute_id") @db.Uuid
+  queueOwner User? @relation("queueOwner", fields: [tenantId, queueOwnerId], references: [tenantId, id])
+  substitute User? @relation("substitute", fields: [tenantId, substituteId], references: [tenantId, id])
+  revision Int @default(0)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  memberships Membership[]
+  categories Category[]
+  subcategories Subcategory[]
+  tickets Ticket[]
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@map("departments")
+}
+model Membership {
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  user User @relation(fields: [tenantId, userId], references: [tenantId, id])
+  department Department @relation(fields: [tenantId, departmentId], references: [tenantId, id])
+  @@id([tenantId, userId, departmentId])
+  @@map("memberships")
+}
+model Category {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  departmentId String @map("department_id") @db.Uuid
+  active Boolean @default(true)
+  sensitive Boolean @default(false)
+  allowIncidents Boolean @default(true) @map("allow_incidents")
+  allowRequests Boolean @default(true) @map("allow_requests")
+  revision Int @default(0)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  department Department @relation(fields: [tenantId, departmentId], references: [tenantId, id])
+  tickets Ticket[]
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  subcategories Subcategory[]
+  items CatalogItem[]
+  @@map("categories")
+}
+model Counter {
+  tenantId String @map("tenant_id") @db.Uuid
+  type String
+  sequence Int @default(0)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  @@id([tenantId, type])
+  @@map("counters")
+}
+model Ticket {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  type String @default("incident")
+  sequence Int
+  number String
+  summary String
+  description String
+  state String @default("Open")
+  priority String
+  severity String
+  categoryId String @map("category_id") @db.Uuid
+  subcategoryId String? @map("subcategory_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  callerId String @map("caller_id") @db.Uuid
+  submittedById String @default(dbgenerated()) @map("submitted_by_id") @db.Uuid
+  assignedToId String? @map("assigned_to_id") @db.Uuid
+  sensitive Boolean @default(false)
+  requestedForId String? @map("requested_for_id") @db.Uuid
+  itemId String? @map("item_id") @db.Uuid
+  quantity Int?
+  unitCostMinor Int? @map("unit_cost_minor")
+  totalCostMinor Int? @map("total_cost_minor")
+  currency String?
+  justification String?
+  approvalVersion Int @default(0) @map("approval_version")
+  approvalCorrectionReason String? @map("approval_correction_reason")
+  untriaged Boolean @default(true)
+  channel String @default("Self Service")
+  holdReason String? @map("hold_reason")
+  previousState String? @map("previous_state")
+  duplicateOfId String? @map("duplicate_of_id") @db.Uuid
+  resolution String?
+  revision Int @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  category Category @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  subcategory Subcategory? @relation(fields: [tenantId, categoryId, subcategoryId], references: [tenantId, categoryId, id])
+  department Department @relation(fields: [tenantId, departmentId], references: [tenantId, id])
+  caller User @relation("caller", fields: [tenantId, callerId], references: [tenantId, id])
+  submittedBy User @relation("submitter", fields: [tenantId, submittedById], references: [tenantId, id])
+  assignedTo User? @relation("assignee", fields: [tenantId, assignedToId], references: [tenantId, id])
+  requestedFor User? @relation("requestedFor", fields: [tenantId, requestedForId], references: [tenantId, id])
+  item CatalogItem? @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  duplicateOf Ticket? @relation("duplicate", fields: [tenantId, duplicateOfId], references: [tenantId, id])
+  duplicates Ticket[] @relation("duplicate")
+  approvals Approval[]
+  attachments Attachment[]
+  activities Activity[]
+  audits Audit[]
+  outbox Outbox[]
+  idempotency Idempotency[]
+  @@unique([tenantId, id])
+  @@unique([tenantId, type, sequence])
+  @@unique([tenantId, number])
+  @@index([tenantId, updatedAt])
+  @@map("tickets")
+}
+model Activity {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  ticketId String @map("ticket_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  body String
+  audience String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  ticket Ticket @relation(fields: [tenantId, ticketId], references: [tenantId, id])
+  author User @relation(fields: [tenantId, authorId], references: [tenantId, id])
+  @@index([tenantId, ticketId, createdAt])
+  @@map("activities")
+}
+model Audit {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  ticketId String @map("ticket_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  action String
+  detail Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  ticket Ticket @relation(fields: [tenantId, ticketId], references: [tenantId, id])
+  actor User @relation(fields: [tenantId, actorId], references: [tenantId, id])
+  @@map("audits")
+}
+model Outbox {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  ticketId String @map("ticket_id") @db.Uuid
+  event String
+  payload Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  attempts Int @default(0)
+  deliveries NotificationDelivery[]
+  ticket Ticket @relation(fields: [tenantId, ticketId], references: [tenantId, id])
+  @@unique([tenantId, id])
+  @@index([tenantId, publishedAt])
+  @@map("outbox")
+}
+model Idempotency {
+  tenantId String @map("tenant_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  operation String
+  key String
+  fingerprint String
+  ticketId String @map("ticket_id") @db.Uuid
+  actor User @relation(fields: [tenantId, actorId], references: [tenantId, id])
+  ticket Ticket @relation(fields: [tenantId, ticketId], references: [tenantId, id])
+  @@id([tenantId, actorId, operation, key])
+  @@map("idempotency")
+}
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  tokenHash String @unique @map("token_hash")
+  csrfToken String @map("csrf_token")
+  mfaVerified Boolean @default(false) @map("mfa_verified")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  user User @relation(fields: [tenantId, userId], references: [tenantId, id])
+  @@map("sessions")
+}
+
+model Subcategory {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+  name String
+  departmentId String? @map("department_id") @db.Uuid
+  active Boolean @default(true)
+  revision Int @default(0)
+  category Category @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  department Department? @relation(fields: [tenantId, departmentId], references: [tenantId, id])
+  tickets Ticket[]
+  @@unique([tenantId, id])
+  @@unique([tenantId, categoryId, id])
+  @@unique([tenantId, categoryId, name])
+  @@map("subcategories")
+}
+model ConfigAudit {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  entityId String @map("entity_id") @db.Uuid
+  action String
+  detail Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor User @relation(fields: [tenantId, actorId], references: [tenantId, id])
+  @@index([tenantId, createdAt])
+  @@map("config_audits")
+}
+
+model CatalogItem {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  categoryId String @map("category_id") @db.Uuid
+  unitCostMinor Int @default(0) @map("unit_cost_minor")
+  currency String
+  recurringPeriod String? @map("recurring_period")
+  requiresManager Boolean @default(false) @map("requires_manager")
+  requiresVp Boolean @default(false) @map("requires_vp")
+  vpThresholdMinor Int? @map("vp_threshold_minor")
+  vpApproverId String? @map("vp_approver_id") @db.Uuid
+  alternateApproverId String? @map("alternate_approver_id") @db.Uuid
+  active Boolean @default(true)
+  revision Int @default(0)
+  category Category @relation(fields: [tenantId, categoryId], references: [tenantId, id])
+  vpApprover User? @relation("vp", fields: [tenantId, vpApproverId], references: [tenantId, id])
+  alternateApprover User? @relation("alternate", fields: [tenantId, alternateApproverId], references: [tenantId, id])
+  tickets Ticket[]
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@map("catalog_items")
+}
+model Approval {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  ticketId String @map("ticket_id") @db.Uuid
+  stage String
+  status String @default("Pending")
+  version Int
+  approverId String? @map("approver_id") @db.Uuid
+  decidedById String? @map("decided_by_id") @db.Uuid
+  correctionReason String? @map("correction_reason")
+  comment String?
+  decidedAt DateTime? @map("decided_at") @db.Timestamptz(6)
+  ticket Ticket @relation(fields: [tenantId, ticketId], references: [tenantId, id])
+  approver User? @relation("approver", fields: [tenantId, approverId], references: [tenantId, id])
+  decidedBy User? @relation("decisionMaker", fields: [tenantId, decidedById], references: [tenantId, id])
+  @@unique([tenantId, ticketId, version, stage])
+  @@index([tenantId, approverId, status])
+  @@map("approvals")
+}
+model ApprovalDelegation {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  approverId String @map("approver_id") @db.Uuid
+  delegateId String @map("delegate_id") @db.Uuid
+  startsAt DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt DateTime @map("ends_at") @db.Timestamptz(6)
+  active Boolean @default(true)
+  revision Int @default(0)
+  approver User @relation("delegator", fields: [tenantId, approverId], references: [tenantId, id])
+  delegate User @relation("delegate", fields: [tenantId, delegateId], references: [tenantId, id])
+  @@index([tenantId, approverId, startsAt, endsAt])
+  @@map("approval_delegations")
+}
+model Attachment {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  ticketId String @map("ticket_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  filename String
+  contentType String @map("content_type")
+  size Int
+  audience String
+  storageKey String @unique @map("storage_key")
+  status String @default("quarantined")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  ticket Ticket @relation(fields: [tenantId, ticketId], references: [tenantId, id])
+  author User @relation(fields: [tenantId, authorId], references: [tenantId, id])
+  @@unique([tenantId, id])
+  @@index([tenantId, ticketId])
+  @@map("attachments")
+}
+model NotificationDelivery {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  recipientId String @map("recipient_id") @db.Uuid
+  status String @default("pending")
+  attempts Int @default(0)
+  lastError String? @map("last_error")
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
+  event Outbox @relation(fields: [tenantId, eventId], references: [tenantId, id])
+  recipient User @relation(fields: [tenantId, recipientId], references: [tenantId, id])
+  @@unique([tenantId, eventId, recipientId])
+  @@map("notification_deliveries")
+}
+model InvitationMail {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  invitationHash String @map("invitation_hash")
+  encryptedUrl String? @map("encrypted_url")
+  status String @default("pending")
+  attempts Int @default(0)
+  lastError String? @map("last_error")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  sentAt DateTime? @map("sent_at") @db.Timestamptz(6)
+  user User @relation(fields: [tenantId, userId], references: [tenantId, id])
+  @@unique([tenantId, id])
+  @@index([status, nextAttemptAt])
+  @@map("invitation_mails")
+}

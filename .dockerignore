@@ -1,0 +1,16 @@
+node_modules
+.pnpm-store
+**/node_modules
+**/dist
+.git
+.env
+.env.*
+playwright-report
+test-results
+coverage
+.local-backups
+*.dump
+*.pem
+*.key
+*.p12
+secrets

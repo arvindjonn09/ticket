@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan working tree and Git history
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.0 dir /repo --redact=100
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.0 git /repo --redact=100
+
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      APP_DB_PASSWORD: ci-app-password
+      POSTGRES_PASSWORD: ci-owner-password
+      DATABASE_URL: postgresql://astrama_app:ci-app-password@localhost:5439/astrama
+      DEMO_PASSWORD: CI-demo-password-2026!
+      MIGRATION_DATABASE_URL: postgresql://astrama_owner:ci-owner-password@localhost:5439/astrama
+      NODE_ENV: development
+      APP_ORIGIN: http://localhost:4310
+      PORT: 4311
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.9
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @astrama/api db:generate
+      - name: Generate disposable MFA key
+        run: |
+          node -e 'console.log("MFA_ENCRYPTION_KEY=" + require("node:crypto").randomBytes(32).toString("hex"))' >> "$GITHUB_ENV"
+      - run: docker compose config --quiet
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: node --test scripts/check-production.test.mjs scripts/backup-stack.test.mjs
+      - name: Start the app and database
+        run: docker compose up --build -d db setup api web mail storage storage-setup scanner
+      - name: Wait for the app
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:4310/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+      - run: pnpm --filter @astrama/domain --filter @astrama/web test
+      - name: Verify scanning, object storage and mail delivery
+        run: |
+          docker compose up -d --wait scanner
+          docker compose run --rm --no-deps \
+            -e NODE_ENV=test -e MFA_ENCRYPTION_KEY \
+            -e SMTP_HOST=mail -e SMTP_PORT=1025 -e SMTP_FROM=desk@astrama.test \
+            -e MAILPIT_URL=http://mail:8025 \
+            -e S3_ENDPOINT=http://storage:9000 -e S3_BUCKET=astrama-attachments \
+            -e S3_ACCESS_KEY=astrama-local -e S3_SECRET_KEY=astrama-local-storage-password \
+            -e CLAMAV_HOST=scanner \
+            -e RUN_QUEUE_TESTS=true \
+            setup pnpm --filter @astrama/api test
+      - name: Build production runtime
+        run: docker build -f infra/Dockerfile --target api-production -t astrama-api:ci .
+      - name: Start background delivery for browser journeys
+        run: docker compose up -d --no-deps --wait worker
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - run: pnpm test:e2e
+        env:
+          BROWSER_MATRIX: '1'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-evidence
+          path: test-results/
+          retention-days: 7
+      - run: pnpm audit --audit-level high
+      - run: pnpm check:licenses
+      - name: Stop local services
+        if: always()
+        run: docker compose down --volumes

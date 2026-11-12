@@ -1,0 +1,107 @@
+name: astrama-local
+services:
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: astrama
+      POSTGRES_USER: astrama_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astrama-local-owner}
+    ports: ["127.0.0.1:5439:5432"]
+    volumes: ["astrama-db:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astrama_owner -d astrama"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  setup:
+    image: astrama-local-api:latest
+    build: { context: ., dockerfile: infra/Dockerfile, target: api }
+    command: ["sh", "-c", "pnpm db:bootstrap && pnpm db:migrate && pnpm db:seed"]
+    environment: &app-env
+      DATABASE_URL: postgresql://astrama_app:${APP_DB_PASSWORD:-astrama-local-app}@db:5432/astrama
+      MIGRATION_DATABASE_URL: postgresql://astrama_owner:${POSTGRES_PASSWORD:-astrama-local-owner}@db:5432/astrama
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-astrama-local-app}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-Astrama-demo-2026!}
+      NODE_ENV: development
+      APP_ORIGIN: http://localhost:4310
+      PORT: 4311
+    depends_on: { db: { condition: service_healthy } }
+  api:
+    image: astrama-local-api:latest
+    build: { context: ., dockerfile: infra/Dockerfile, target: api }
+    environment:
+      DATABASE_URL: postgresql://astrama_app:${APP_DB_PASSWORD:-astrama-local-app}@db:5432/astrama
+      NODE_ENV: development
+      APP_ORIGIN: http://localhost:4310
+      PORT: 4311
+      TRUST_PROXY: "1"
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set a 64-character random hex MFA encryption key in .env}
+      S3_ENDPOINT: http://storage:9000
+      S3_BUCKET: astrama-attachments
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-astrama-local}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-astrama-local-storage-password}
+      CLAMAV_HOST: scanner
+    depends_on: { setup: { condition: service_completed_successfully } }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4311/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  web:
+    build: { context: ., dockerfile: infra/Dockerfile, target: web }
+    ports: ["127.0.0.1:4310:80"]
+    depends_on: { api: { condition: service_healthy } }
+  mail:
+    image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    ports: ["127.0.0.1:4312:8025", "127.0.0.1:11025:1025"]
+  storage:
+    image: rustfs/rustfs@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-astrama-local}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-astrama-local-storage-password}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes: ["astrama-files:/data"]
+    ports: ["127.0.0.1:9000:9000"]
+  storage-setup:
+    image: astrama-local-api:latest
+    command: ["node", "apps/api/dist/storage-init.js"]
+    environment:
+      S3_ENDPOINT: http://storage:9000
+      S3_BUCKET: astrama-attachments
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-astrama-local}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-astrama-local-storage-password}
+    depends_on: { storage: { condition: service_started }, setup: { condition: service_completed_successfully } }
+  scanner:
+    image: clamav/clamav@sha256:45fe5149fbee5a46509c9848ef20d0c354b7b2323c9369f285939a37cf33422a
+    volumes: ["astrama-scanner:/var/lib/clamav"]
+    ports: ["127.0.0.1:13310:3310"]
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "1"]
+      interval: 5s
+      timeout: 5s
+      start_period: 120s
+      retries: 36
+  worker:
+    image: astrama-local-api:latest
+    command: ["node", "apps/api/dist/notification-worker.js"]
+    environment:
+      DATABASE_URL: postgresql://astrama_app:${APP_DB_PASSWORD:-astrama-local-app}@db:5432/astrama
+      APP_ORIGIN: http://localhost:4310
+      SMTP_HOST: mail
+      SMTP_PORT: 1025
+      SMTP_FROM: Astrama <service-desk@astrama.test>
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set a 64-character random hex MFA encryption key in .env}
+    depends_on: { setup: { condition: service_completed_successfully }, mail: { condition: service_started } }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "apps/api/dist/worker-health.js"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+volumes:
+  astrama-db:
+  astrama-files:
+  astrama-scanner:

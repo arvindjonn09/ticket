@@ -322,6 +322,10 @@ Checked items have local automated evidence in `docs/task-status.md`; production
 
 ## 14. Business Decisions Still Needed
 
+Confirmed policy answers from 12 November 2026 are recorded in section 24. The
+remaining questions below concern deployment-specific values or policies that the
+owner has not supplied.
+
 1. The initial scope is approximately 100 company users; will external customers need access later?
 2. Which actual departments/groups will handle tickets, who belongs to them, and who owns the restricted triage queue?
 3. What are the initial category/subcategory lists, their department mappings, and request items? Administrators can maintain them after setup.
@@ -330,7 +334,9 @@ Checked items have local automated evidence in `docs/task-status.md`; production
 6. What support hours, response targets, priority/severity definitions, and escalation rules apply?
 7. Does completion require customer confirmation or an automatic closure period? Can completed tickets reopen?
 8. Which attachment formats and limits are needed, including executables and archives?
-9. Is automatic email intake needed at launch, and which mailbox should it use?
+9. Automatic email intake is required. The production mailbox, provider, DNS and
+   credentials are intentionally deferred to the final production setup; build
+   and test with Mailpit and the smoke organisation only.
 10. ~~Which identity provider~~ (decided: built-in login, SSO later). Which hosting environment, backup schedule, and retention policy apply? Which country's data-protection law applies?
 11. Who are the business sponsor, service owner, technical owner, and department queue owners/substitutes?
 12. What are the budget ceiling, target launch date, and acceptable recovery targets? Is a custom build preferred after comparing configuration and ownership costs? (Commercial-sale intent now favours a custom build.)
@@ -577,6 +583,24 @@ Resolved incidents accept customer messages, but reopening uses **Still a proble
 
 Confirmed by the user on 10 November 2026:
 
+The owner reconfirmed these implementation decisions on 12 November 2026:
+
+- **D1 — ticket access:** category routes a ticket to a department; active members
+  of any active department group may read its details. Claiming, notes and
+  resolving remain restricted to the owning group. Any group member may transfer
+  with a reason. Sensitive Security tickets remain restricted; confirm this in
+  the pilot. Because group members can read all tickets, support-agent MFA is
+  required.
+- **D2 — email setup:** configure the real mailbox only at the final production
+  step. During implementation, use Mailpit, a signed test webhook, and a smoke
+  organisation.
+- **D3 — On Hold:** SLA time continues while a ticket is On Hold. Exact target
+  values remain configurable and proposed until the owner confirms them.
+- **D4 — deployment:** after publishing, the Docker stack runs on another machine
+  without agents; CX-07 covers the self-operating handover.
+- **D5 — email routing:** map department addresses to groups, route the general
+  address to triage, alert triage, and offer a portal link for category selection.
+
 - **Name:** Astrama for now. Keep the displayed product name, logo, and brand colour configurable so a later rename does not require changing business rules or ticket history.
 - **Appearance:** restrained, professional, and practical. Clean light and dark themes, with a system-theme option; readable tables, clear spacing, subtle borders, accessible contrast, and consistent controls. Avoid decorative gradients, excessive dashboard cards, and unnecessary animation.
 - **Starting departments:** IT Support, Application Support, Infrastructure, and Security. Add further departments incrementally through organisation settings. Retain a triage fallback.
@@ -597,8 +621,24 @@ Organisation support groups, category/subcategory administration, administrator 
 
 ### Remaining launch design
 
-- **Business-day automation:** use the existing durable job worker, tenant timezone and an explicit working-day/holiday calendar for reminders, escalation and automatic closure. Recheck ticket state, approval version and recipients when a job runs; record each action once. No timer currently auto-closes customer tickets. Confirm the business calendar and timing policy before enabling this feature.
-- **Account recovery:** require an organisation-approved identity verification process, an audited operator action, single-use recovery tokens, and session revocation. Password recovery, lost-authenticator recovery and key rotation must be rehearsed before production; ordinary invitations must never reset enrolled MFA.
-- **Tenant export and retention:** list-view CSV is implemented. A full tenant export must include permitted database records, attachment objects and a manifest. Define record retention and legal-hold rules before building tenant deletion; no automatic deletion runs today.
-- **Deployment and recovery:** select production hosting, HTTPS/domain and SMTP provider; provision separate database/runtime credentials, private storage and secrets. Rehearse recovery of database, object files and encryption keys together. The local database restore check covers only the database snapshot.
-- **Pilot:** run real employee, support, manager and VP journeys, operational recovery, expected peak load and the supported browser matrix with the organisation. Chromium automation and a bounded 100-account smoke are current evidence, not the complete pilot.
+- **Business-day automation:** reminders, escalation and automatic incident closure
+  run through the durable worker with tenant weekdays/holidays and idempotent
+  state/recipient rechecks. Automation is disabled until configured and enabled by
+  an administrator. Confirm the business calendar and timing policy before
+  enabling it.
+- **Account recovery and key rotation:** password recovery, owner-only verified
+  lost-MFA recovery, session revocation and atomic rotation of encrypted MFA,
+  invitation and recovery material are implemented. Rehearse identity
+  verification, recovery and rotation before production; invitations never reset
+  enrolled MFA.
+- **Tenant data lifecycle:** full tenant export, retention previews/execution,
+  legal holds and retryable private-object cleanup are implemented. Confirm
+  retention periods and legal-hold policy for the production tenant.
+- **Deployment and recovery:** production Compose, HTTPS proxy configuration,
+  preflight, backup tooling and deployment/recovery runbooks exist. CX-07 still
+  needs published versioned images, clean-machine install and restore drills,
+  upgrade/rollback steps and monitoring evidence before handover.
+- **Pilot:** run employee, support, manager and VP journeys, operational
+  recovery, expected peak load and the supported browser matrix with the
+  organisation. Existing Chromium/Firefox/WebKit checks and bounded account
+  smoke are current evidence, not the complete pilot.

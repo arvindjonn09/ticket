@@ -15,3 +15,14 @@ Before starting new work, read the open review handoffs in [docs/reviews/](docs/
 Task distribution and model selection are in [.claude/agents/orchestrator.md](.claude/agents/orchestrator.md). The current slice and file ownership are in [docs/first-slice.md](docs/first-slice.md); verification and remaining work are tracked in [docs/task-status.md](docs/task-status.md).
 
 - For delegated work, maintain the agent activity log in [docs/task-status.md](docs/task-status.md#agent-activity): record starts, outcomes, handoffs, questions, elapsed time, and runtime-reported token counts.
+
+Follow the user's current request and higher-priority instructions. A review
+request authorizes a review; start implementation when requested. Proposed
+business defaults are not approved production settings. Workers do not spawn
+further agents unless the orchestrator explicitly delegates that authority.
+
+Read the relevant sections of `update-plan.md`, `CLAUDE.md`, and the
+orchestration policy before work. Specialist briefs are instructions, not runtime
+model configuration. Use only models/reasoning settings supported by the active
+runtime, record fallbacks and actual checks, and do not treat planning edits as
+implementation completion.

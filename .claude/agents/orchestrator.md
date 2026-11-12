@@ -37,15 +37,17 @@ Rules:
 
 Read the relevant requirement sections and inspect the affected files before assigning work. Small tasks stay with the orchestrator. Use specialists when their task can be completed independently or needs a separate review.
 
-| Role brief                                | Owned work                                                                                                                              | Default                                    |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| [Product analyst](product-analyst.md)     | Workflow questions, user journeys, acceptance criteria; no invented approvals or budgets.                                               | Sol medium                                 |
-| [Data engineer](data-engineer.md)         | Prisma schema/migrations, tenant constraints, RLS, numbering, repositories, reporting queries.                                          | Sol high                                   |
-| [Backend engineer](backend-engineer.md)   | Domain rules, API, contracts, auth, approvals, transactional outbox and job handlers. Coordinate repository changes with data engineer. | Sol medium; high for security/transactions |
-| [Frontend engineer](frontend-engineer.md) | UI implementation against agreed contracts, accessibility, employee/agent/approval/admin views.                                         | Sol medium                                 |
-| [DevOps engineer](devops-engineer.md)     | Local infrastructure, build/deploy configuration, secrets handling, monitoring and restore checks.                                      | Sol medium                                 |
-| [QA engineer](qa-engineer.md)             | Acceptance, concurrency and end-to-end verification; report production bugs to their owner.                                             | Sol medium; high for isolation/concurrency |
-| [Security reviewer](security-reviewer.md) | Independent read-only review of auth, isolation, permissions, uploads, routing and approvals.                                           | Sol high                                   |
+| Role brief                                      | Owned work                                                                                                                              | Codex default                              | Claude Code default |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------- |
+| [Product analyst](product-analyst.md)           | Workflow questions, user journeys, acceptance criteria; no invented approvals or budgets.                                               | Sol medium                                 | Sonnet              |
+| [Data engineer](data-engineer.md)               | Prisma schema/migrations, tenant constraints, RLS, numbering, repositories, reporting queries.                                          | Sol high                                   | Opus                |
+| [Backend engineer](backend-engineer.md)         | Domain rules, API, contracts, auth, approvals, transactional outbox and job handlers. Coordinate repository changes with data engineer. | Sol medium; high for security/transactions | Opus                |
+| [Frontend engineer](frontend-engineer.md)       | UI implementation against agreed contracts, accessibility, employee/agent/approval/admin views.                                         | Sol medium                                 | Sonnet              |
+| [DevOps engineer](devops-engineer.md)           | Local infrastructure, build/deploy configuration, secrets handling, monitoring and restore checks.                                      | Sol medium                                 | Sonnet              |
+| [QA engineer](qa-engineer.md)                   | Acceptance, concurrency and end-to-end verification; report production bugs to their owner.                                             | Sol medium; high for isolation/concurrency | Sonnet              |
+| [Security reviewer](security-reviewer.md)       | Independent read-only review of auth, isolation, permissions, uploads, routing and approvals.                                           | Sol high                                   | Opus                |
+| [Integration engineer](integration-engineer.md) | Tenant-safe inbound/outbound mail, adapters, signed webhooks and future SSO/collaboration integrations.                                 | Sol high                                   | Opus                |
+| Mechanical task                                 | Specified formatting, file inventories and bounded edits.                                                                               | Luna low                                   | Haiku               |
 
 The orchestrator owns the integrated plan, dependencies, shared contracts, task ledger, final review, and user-facing result. The CEO perspective is a product-value review when scope or investment changes; it does not require a permanent extra agent.
 
@@ -65,6 +67,7 @@ Relevant requirement sections:
 Role / requested model / reasoning:
 Dependencies already satisfied:
 Files allowed to edit / excluded files:
+Feature branch; push only after CI is green; gitleaks must be clean on the final tree and full history.
 Inputs, agreed interfaces, and relevant evidence:
 Acceptance criteria and required checks:
 Report limit: aim for 500 words; include all material failures.

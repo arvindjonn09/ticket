@@ -5,5 +5,11 @@ export default tseslint.config(
   { ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  { rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }] } },
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'max-lines': ['warn', { max: 400, skipBlankLines: true, skipComments: true }],
+      complexity: ['warn', 15],
+    },
+  },
 );

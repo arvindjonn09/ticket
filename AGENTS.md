@@ -7,6 +7,7 @@ Before starting new work, read the open review handoffs in [docs/reviews/](docs/
 ## Code changes
 
 - Apply the `ponytail` skill to every coding task in this repository, including implementation, fixes, refactors, and code review. Use its default `full` intensity unless the user asks for another level.
+- Apply ponytail to scope and dependencies. Keep code readable; do not trade readability for fewer lines.
 - Read the affected code and trace the relevant flow before changing it. Prefer the smallest correct change, reuse existing code, and avoid unnecessary abstractions or dependencies.
 - Do not simplify away security, validation, error handling, accessibility, or behavior the user explicitly requested. Follow the product and architecture rules in `CLAUDE.md` as well.
 - For non-trivial logic, leave the smallest useful runnable check as described by the skill.

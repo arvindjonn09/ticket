@@ -1,0 +1,9 @@
+node_modules
+.pnpm-store
+dist
+build
+coverage
+playwright-report
+test-results
+.local-backups
+pnpm-lock.yaml

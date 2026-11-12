@@ -7,6 +7,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "build": "pnpm --filter @astrama/api db:generate && pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint apps packages --ext .ts,.tsx",

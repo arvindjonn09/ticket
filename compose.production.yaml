@@ -34,7 +34,8 @@ services:
   setup:
     image: astrama-setup:${RELEASE_TAG:-local}
     build: { context: ., dockerfile: infra/Dockerfile, target: api }
-    command: ["sh", "-c", "pnpm db:bootstrap && pnpm db:migrate && node apps/api/dist/storage-init.js"]
+    command:
+      ["sh", "-c", "pnpm db:bootstrap && pnpm db:migrate && node apps/api/dist/storage-init.js"]
     environment:
       <<: *runtime
       MIGRATION_DATABASE_URL: postgresql://astrama_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/astrama
@@ -51,7 +52,13 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:4311/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4311/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5

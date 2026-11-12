@@ -22,20 +22,44 @@ All routes under `/api`, same origin through Vite proxy or nginx. JSON errors `{
 
 ```ts
 type SessionView = {
-  user: { id: string; name: string; email: string; role: 'employee'|'agent'; departmentIds: string[] };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: "employee" | "agent";
+    departmentIds: string[];
+  };
   tenant: { id: string; name: string; slug: string; brandName: string };
   csrfToken: string;
 };
 type TicketSummary = {
-  id: string; number: string; summary: string; description: string;
-  state: 'Open'|'In Progress'|'On Hold'|'Resolved'|'Complete'|'Cancelled';
-  priority: 'P1'|'P2'|'P3'|'P4'|'P5'; severity: string;
-  categoryId: string; categoryName: string; departmentId: string; departmentName: string;
-  callerId: string; callerName: string; assignedToId: string|null; assignedToName: string|null;
-  revision: number; createdAt: string; updatedAt: string;
+  id: string;
+  number: string;
+  summary: string;
+  description: string;
+  state: "Open" | "In Progress" | "On Hold" | "Resolved" | "Complete" | "Cancelled";
+  priority: "P1" | "P2" | "P3" | "P4" | "P5";
+  severity: string;
+  categoryId: string;
+  categoryName: string;
+  departmentId: string;
+  departmentName: string;
+  callerId: string;
+  callerName: string;
+  assignedToId: string | null;
+  assignedToName: string | null;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
 };
 type TicketDetail = TicketSummary & {
-  activities: {id:string;body:string;audience:'customer'|'internal';authorName:string;createdAt:string}[];
+  activities: {
+    id: string;
+    body: string;
+    audience: "customer" | "internal";
+    authorName: string;
+    createdAt: string;
+  }[];
 };
 ```
 

@@ -1,4 +1,4 @@
-import i18n from './i18n';
+import i18n from "./i18n";
 
 export class ApiError extends Error {
   constructor(
@@ -29,7 +29,7 @@ export async function api<T>(
       response.status,
       typeof data?.message === "string"
         ? data.message
-        : i18n.t('requestFailed', { status: response.status }),
+        : i18n.t("requestFailed", { status: response.status }),
     );
   return data as T;
 }

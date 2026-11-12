@@ -16,13 +16,13 @@ Coordinate design and delivery with the smallest team and context needed to comp
 
 These project defaults are based on [official OpenAI model-selection guidance](https://developers.openai.com/api/docs/guides/model-selection), checked on 10 November 2026, and the model IDs exposed in this session. Availability and supported reasoning settings must be checked in the runtime before dispatch. They are workload recommendations, not guaranteed token savings or benchmarks.
 
-| Work | Preferred model | Starting reasoning | Use |
-| --- | --- | --- | --- |
-| Coordination and ordinary engineering | `gpt-6.1-sol` | medium | Default for planning a scoped change, implementing features, integration, and reviewing ordinary changes. |
-| Mechanical edits and bounded inspection | `gpt-6-luna` | low | File inventories, specified documentation edits, test-result summaries, and small changes with explicit acceptance checks. |
-| Schema, tenant isolation, authentication, approvals, difficult tests | `gpt-6.1-sol` | high | Data/backend work and independent review where mistakes can expose data or invalidate decisions. |
-| Unresolved architecture or difficult cross-module failures | `gpt-6-astra` | high | Escalate a specific unresolved question with evidence; return routine follow-up work to Sol. |
-| Visual inspection or a clearly specified UI interaction | `gpt-6.1-terra` | medium | Optional when visual/computer-use tools are available; Sol remains the default for frontend implementation. |
+| Work                                                                 | Preferred model | Starting reasoning | Use                                                                                                                        |
+| -------------------------------------------------------------------- | --------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Coordination and ordinary engineering                                | `gpt-6.1-sol`   | medium             | Default for planning a scoped change, implementing features, integration, and reviewing ordinary changes.                  |
+| Mechanical edits and bounded inspection                              | `gpt-6-luna`    | low                | File inventories, specified documentation edits, test-result summaries, and small changes with explicit acceptance checks. |
+| Schema, tenant isolation, authentication, approvals, difficult tests | `gpt-6.1-sol`   | high               | Data/backend work and independent review where mistakes can expose data or invalidate decisions.                           |
+| Unresolved architecture or difficult cross-module failures           | `gpt-6-astra`   | high               | Escalate a specific unresolved question with evidence; return routine follow-up work to Sol.                               |
+| Visual inspection or a clearly specified UI interaction              | `gpt-6.1-terra` | medium             | Optional when visual/computer-use tools are available; Sol remains the default for frontend implementation.                |
 
 Rules:
 
@@ -37,15 +37,15 @@ Rules:
 
 Read the relevant requirement sections and inspect the affected files before assigning work. Small tasks stay with the orchestrator. Use specialists when their task can be completed independently or needs a separate review.
 
-| Role brief | Owned work | Default |
-| --- | --- | --- |
-| [Product analyst](product-analyst.md) | Workflow questions, user journeys, acceptance criteria; no invented approvals or budgets. | Sol medium |
-| [Data engineer](data-engineer.md) | Prisma schema/migrations, tenant constraints, RLS, numbering, repositories, reporting queries. | Sol high |
-| [Backend engineer](backend-engineer.md) | Domain rules, API, contracts, auth, approvals, transactional outbox and job handlers. Coordinate repository changes with data engineer. | Sol medium; high for security/transactions |
-| [Frontend engineer](frontend-engineer.md) | UI implementation against agreed contracts, accessibility, employee/agent/approval/admin views. | Sol medium |
-| [DevOps engineer](devops-engineer.md) | Local infrastructure, build/deploy configuration, secrets handling, monitoring and restore checks. | Sol medium |
-| [QA engineer](qa-engineer.md) | Acceptance, concurrency and end-to-end verification; report production bugs to their owner. | Sol medium; high for isolation/concurrency |
-| [Security reviewer](security-reviewer.md) | Independent read-only review of auth, isolation, permissions, uploads, routing and approvals. | Sol high |
+| Role brief                                | Owned work                                                                                                                              | Default                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| [Product analyst](product-analyst.md)     | Workflow questions, user journeys, acceptance criteria; no invented approvals or budgets.                                               | Sol medium                                 |
+| [Data engineer](data-engineer.md)         | Prisma schema/migrations, tenant constraints, RLS, numbering, repositories, reporting queries.                                          | Sol high                                   |
+| [Backend engineer](backend-engineer.md)   | Domain rules, API, contracts, auth, approvals, transactional outbox and job handlers. Coordinate repository changes with data engineer. | Sol medium; high for security/transactions |
+| [Frontend engineer](frontend-engineer.md) | UI implementation against agreed contracts, accessibility, employee/agent/approval/admin views.                                         | Sol medium                                 |
+| [DevOps engineer](devops-engineer.md)     | Local infrastructure, build/deploy configuration, secrets handling, monitoring and restore checks.                                      | Sol medium                                 |
+| [QA engineer](qa-engineer.md)             | Acceptance, concurrency and end-to-end verification; report production bugs to their owner.                                             | Sol medium; high for isolation/concurrency |
+| [Security reviewer](security-reviewer.md) | Independent read-only review of auth, isolation, permissions, uploads, routing and approvals.                                           | Sol high                                   |
 
 The orchestrator owns the integrated plan, dependencies, shared contracts, task ledger, final review, and user-facing result. The CEO perspective is a product-value review when scope or investment changes; it does not require a permanent extra agent.
 

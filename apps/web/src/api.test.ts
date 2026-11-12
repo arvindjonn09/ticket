@@ -4,13 +4,11 @@ import { api, ApiError } from "./api";
 afterEach(() => vi.unstubAllGlobals());
 
 it("sends same-origin credentials and CSRF on mutations and preserves revision conflict errors", async () => {
-  const fetch = vi
-    .fn()
-    .mockResolvedValue(
-      new Response(JSON.stringify({ message: "Revision changed" }), {
-        status: 409,
-      }),
-    );
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify({ message: "Revision changed" }), {
+      status: 409,
+    }),
+  );
   vi.stubGlobal("fetch", fetch);
   const result = api(
     "/tickets/example/messages",

@@ -13,4 +13,5 @@ Before starting new work, read the open review handoffs in [docs/reviews/](docs/
 - For non-trivial logic, leave the smallest useful runnable check as described by the skill.
 
 Task distribution and model selection are in [.claude/agents/orchestrator.md](.claude/agents/orchestrator.md). The current slice and file ownership are in [docs/first-slice.md](docs/first-slice.md); verification and remaining work are tracked in [docs/task-status.md](docs/task-status.md).
+
 - For delegated work, maintain the agent activity log in [docs/task-status.md](docs/task-status.md#agent-activity): record starts, outcomes, handoffs, questions, elapsed time, and runtime-reported token counts.

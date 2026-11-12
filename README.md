@@ -24,10 +24,10 @@ Open **http://localhost:4310**. The setup service bootstraps the restricted runt
 
 Local emails are captured at **http://localhost:4312**; they are not sent to real mailboxes. Private file storage and ClamAV run as separate containers. The scanner may take several minutes on first start; uploads fail safely until scanning is available. The API checks ticket and attachment permissions on every download.
 
-| Organisation slug | Employee | Support agent |
-| --- | --- | --- |
-| `harbour` | `employee@demo.test` | `agent@demo.test` |
-| `northstar` | `employee@demo.test` | `agent@demo.test` |
+| Organisation slug | Employee             | Support agent     |
+| ----------------- | -------------------- | ----------------- |
+| `harbour`         | `employee@demo.test` | `agent@demo.test` |
+| `northstar`       | `employee@demo.test` | `agent@demo.test` |
 
 Local demo password: `Astrama-demo-2026!` (override with `DEMO_PASSWORD` before initial setup). These accounts and local database passwords are demonstration settings. The compose stack binds its exposed ports to loopback and runs local development cookie settings; it is not a production deployment configuration.
 

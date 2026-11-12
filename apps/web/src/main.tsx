@@ -57,12 +57,7 @@ import {
 import { Activation, Profile } from "./people";
 import { Recovery } from "./recovery";
 import { TicketManagement, Attachments, ReviseRequest } from "./ticket-tools";
-import type {
-  Catalog,
-  SessionView,
-  TicketDetail,
-  TicketSummary,
-} from "./types";
+import type { Catalog, SessionView, TicketDetail, TicketSummary } from "./types";
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -134,9 +129,7 @@ function Failure({ error, retry }: { error: Error; retry?: () => void }) {
       </strong>
       {retry && (
         <button className="text-button" type="button" onClick={retry}>
-          {error instanceof ApiError && error.status === 409
-            ? t("reload")
-            : t("retry")}
+          {error instanceof ApiError && error.status === 409 ? t("reload") : t("retry")}
         </button>
       )}
     </div>
@@ -154,15 +147,15 @@ function Loading() {
 function Status({ state }: { state: TicketSummary["state"] }) {
   const { t } = useTranslation();
   return (
-    <span
-      className={`status state-${state.toLowerCase().replaceAll(" ", "-")}`}
-    >
+    <span className={`status state-${state.toLowerCase().replaceAll(" ", "-")}`}>
       <span />
       {t(`states.${state}`)}
     </span>
   );
 }
-function date(value: string, full = false) { return displayDate(value, full); }
+function date(value: string, full = false) {
+  return displayDate(value, full);
+}
 function initials(name: string) {
   return name
     .split(" ")
@@ -244,9 +237,7 @@ function Login() {
                 organisation: String(form.get("organisation")).trim(),
                 email: String(form.get("email")).trim(),
                 password: String(form.get("password")),
-                ...(form.get("totpCode")
-                  ? { totpCode: String(form.get("totpCode")) }
-                  : {}),
+                ...(form.get("totpCode") ? { totpCode: String(form.get("totpCode")) } : {}),
               });
             }}
           >
@@ -272,12 +263,7 @@ function Login() {
             </label>
             <label>
               {t("password")}
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
+              <input name="password" type="password" autoComplete="current-password" required />
             </label>
             <label>
               {t("authenticatorCodeOptional")}
@@ -296,7 +282,9 @@ function Login() {
               <ArrowRight size={17} />
             </button>
           </form>
-          <p><a href="/forgot-password">{t("forgotPassword")}</a></p>
+          <p>
+            <a href="/forgot-password">{t("forgotPassword")}</a>
+          </p>
           <p className="login-privacy">
             <LockKeyhole size={13} />
             {t("loginFoot")}
@@ -318,14 +306,20 @@ function Shell({ session }: { session: SessionView }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const [params] = useSearchParams();
-  const brandColour = /^#[0-9a-f]{6}$/i.test(session.tenant.primaryColour || "") ? session.tenant.primaryColour : undefined;
-  const luminance = brandColour ? [1, 3, 5].map(index => parseInt(brandColour.slice(index, index + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0) : 0;
+  const brandColour = /^#[0-9a-f]{6}$/i.test(session.tenant.primaryColour || "")
+    ? session.tenant.primaryColour
+    : undefined;
+  const luminance = brandColour
+    ? [1, 3, 5]
+        .map((index) => parseInt(brandColour.slice(index, index + 2), 16) / 255)
+        .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+        .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index]!, 0)
+    : 0;
   useEffect(() => {
     document.title = `${session.tenant.brandName} · ${t("serviceDesk")}`;
   }, [session.tenant.brandName, t]);
   const logout = useMutation({
-    mutationFn: () =>
-      api("/auth/logout", { method: "POST", body: "{}" }, session.csrfToken),
+    mutationFn: () => api("/auth/logout", { method: "POST", body: "{}" }, session.csrfToken),
     onSuccess: () => {
       return updateSession(cache, null);
     },
@@ -346,7 +340,14 @@ function Shell({ session }: { session: SessionView }) {
               : "/tickets"
           }
         >
-          <span className="brand-mark" style={brandColour ? { background: brandColour, color: luminance > 0.179 ? "#000000" : "#ffffff" } : undefined}>
+          <span
+            className="brand-mark"
+            style={
+              brandColour
+                ? { background: brandColour, color: luminance > 0.179 ? "#000000" : "#ffffff" }
+                : undefined
+            }
+          >
             <LifeBuoy size={23} />
           </span>
           <span>
@@ -362,9 +363,7 @@ function Shell({ session }: { session: SessionView }) {
                 to="/tickets"
                 end
                 className={({ isActive }) =>
-                  isActive && !params.get("scope")
-                    ? "nav-link active"
-                    : "nav-link"
+                  isActive && !params.get("scope") ? "nav-link active" : "nav-link"
                 }
               >
                 <Inbox size={18} />
@@ -373,11 +372,7 @@ function Shell({ session }: { session: SessionView }) {
               {session.user.role === "agent" && (
                 <Link
                   to="/tickets?scope=mine"
-                  className={
-                    params.get("scope") === "mine"
-                      ? "nav-link active"
-                      : "nav-link"
-                  }
+                  className={params.get("scope") === "mine" ? "nav-link active" : "nav-link"}
                 >
                   <Ticket size={18} />
                   {t("myTickets")}
@@ -526,18 +521,17 @@ function TicketList() {
         <div>
           <div className="eyebrow">{t("serviceDesk")}</div>
           <h1>{t(scope === "mine" ? "myTickets" : "listTitle")}</h1>
-          <p>
-            {t(
-              session.user.role === "agent"
-                ? "listIntroAgent"
-                : "listIntroEmployee",
-            )}
-          </p>
+          <p>{t(session.user.role === "agent" ? "listIntroAgent" : "listIntroEmployee")}</p>
         </div>
-        <div className="heading-actions"><Link className="button secondary" to="/requests/new">{t("newRequest")}</Link><Link className="button primary" to="/tickets/new">
-          <CirclePlus size={17} />
-          {t("newIncident")}
-        </Link></div>
+        <div className="heading-actions">
+          <Link className="button secondary" to="/requests/new">
+            {t("newRequest")}
+          </Link>
+          <Link className="button primary" to="/tickets/new">
+            <CirclePlus size={17} />
+            {t("newIncident")}
+          </Link>
+        </div>
       </div>
       <div className="metrics" aria-live="polite">
         {[
@@ -545,27 +539,21 @@ function TicketList() {
           {
             key: "active",
             count: records.filter((ticket) =>
-              ["Open", "In Progress", "On Hold", "Pending Approval"].includes(
-                ticket.state,
-              ),
+              ["Open", "In Progress", "On Hold", "Pending Approval"].includes(ticket.state),
             ).length,
           },
           {
             key: "needsConfirmation",
-            count: records.filter((ticket) => ticket.state === "Resolved")
-              .length,
+            count: records.filter((ticket) => ticket.state === "Resolved").length,
           },
           {
             key: "completed",
-            count: records.filter((ticket) => ticket.state === "Complete")
-              .length,
+            count: records.filter((ticket) => ticket.state === "Complete").length,
           },
         ].map((metric) => (
           <div key={metric.key}>
             <span>{t(metric.key)}</span>
-            <strong>
-              {tickets.isPending || tickets.isError ? "—" : metric.count}
-            </strong>
+            <strong>{tickets.isPending || tickets.isError ? "—" : metric.count}</strong>
           </div>
         ))}
       </div>
@@ -600,8 +588,30 @@ function TicketList() {
             )}
           </form>
           <div className="queue-filters">
-            <select aria-label={t("categoryFilter")} value={categoryId} onChange={e => update("categoryId", e.target.value)}><option value="">{t("allCategories")}</option>{catalog.data?.categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
-            <select aria-label={t("channelFilter")} value={channel} onChange={e => update("channel", e.target.value)}><option value="">{t("allChannels")}</option>{["Self Service", "Email", "Phone", "Walk In"].map(value => <option key={value} value={value}>{t(`channels.${value}`)}</option>)}</select>
+            <select
+              aria-label={t("categoryFilter")}
+              value={categoryId}
+              onChange={(e) => update("categoryId", e.target.value)}
+            >
+              <option value="">{t("allCategories")}</option>
+              {catalog.data?.categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label={t("channelFilter")}
+              value={channel}
+              onChange={(e) => update("channel", e.target.value)}
+            >
+              <option value="">{t("allChannels")}</option>
+              {["Self Service", "Email", "Phone", "Walk In"].map((value) => (
+                <option key={value} value={value}>
+                  {t(`channels.${value}`)}
+                </option>
+              ))}
+            </select>
             <select
               aria-label={t("typeFilter")}
               value={type}
@@ -623,7 +633,18 @@ function TicketList() {
             </select>
             {session.user.role !== "employee" && (
               <>
-                <select aria-label={t("agentFilter")} value={assignedToId} onChange={e => update("assignedToId", e.target.value)}><option value="">{t("allAgents")}</option>{catalog.data?.agents?.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select>
+                <select
+                  aria-label={t("agentFilter")}
+                  value={assignedToId}
+                  onChange={(e) => update("assignedToId", e.target.value)}
+                >
+                  <option value="">{t("allAgents")}</option>
+                  {catalog.data?.agents?.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
                 <select
                   aria-label={t("assignmentFilter")}
                   value={assigned}
@@ -712,36 +733,24 @@ function TicketList() {
                   {records.map((ticket) => (
                     <tr key={ticket.id}>
                       <td>
-                        <Link
-                          className="ticket-number"
-                          to={`/tickets/${ticket.id}`}
-                        >
+                        <Link className="ticket-number" to={`/tickets/${ticket.id}`}>
                           {ticket.number}
                         </Link>
                       </td>
                       <td>
-                        <Link
-                          className="ticket-summary"
-                          to={`/tickets/${ticket.id}`}
-                        >
+                        <Link className="ticket-summary" to={`/tickets/${ticket.id}`}>
                           {ticket.summary}
                         </Link>
                         <span className="table-caption">
-                          <Link to={`/users/${ticket.callerId}`}>
-                            {ticket.callerName}
-                          </Link>
-                          {ticket.requestedForName && (
-                            <> · {ticket.requestedForName}</>
-                          )}
+                          <Link to={`/users/${ticket.callerId}`}>{ticket.callerName}</Link>
+                          {ticket.requestedForName && <> · {ticket.requestedForName}</>}
                         </span>
                       </td>
                       <td>
                         <Status state={ticket.state} />
                       </td>
                       <td>
-                        <span
-                          className={`priority priority-${ticket.priority}`}
-                        >
+                        <span className={`priority priority-${ticket.priority}`}>
                           {ticket.priority}
                         </span>
                       </td>
@@ -752,10 +761,7 @@ function TicketList() {
                         </span>
                       </td>
                       <td className="date-cell">
-                        <time
-                          dateTime={ticket.updatedAt}
-                          title={date(ticket.updatedAt, true)}
-                        >
+                        <time dateTime={ticket.updatedAt} title={date(ticket.updatedAt, true)}>
                           {date(ticket.updatedAt)}
                         </time>
                       </td>
@@ -781,12 +787,17 @@ function NewIncident() {
   const cache = useQueryClient();
   const [categoryId, setCategoryId] = useState("");
   const [subcategoryId, setSubcategoryId] = useState("");
-  const callers = useQuery({ queryKey: ["request-catalog"], queryFn: () => api<{ users: { id: string; name: string }[] }>("/requests/catalog"), enabled: session.user.role === "agent" });
+  const callers = useQuery({
+    queryKey: ["request-catalog"],
+    queryFn: () => api<{ users: { id: string; name: string }[] }>("/requests/catalog"),
+    enabled: session.user.role === "agent",
+  });
   const catalog = useQuery({
     queryKey: ["catalog"],
     queryFn: () => api<Catalog>("/catalog"),
   });
-  const availableCategories = catalog.data?.categories.filter(category => category.allowIncidents !== false) || [];
+  const availableCategories =
+    catalog.data?.categories.filter((category) => category.allowIncidents !== false) || [];
   const idempotencyKey = useRef(crypto.randomUUID());
   const create = useMutation({
     mutationFn: (body: {
@@ -838,7 +849,9 @@ function NewIncident() {
             />
           ) : (
             <form
-              onChange={() => { idempotencyKey.current = crypto.randomUUID(); }}
+              onChange={() => {
+                idempotencyKey.current = crypto.randomUUID();
+              }}
               onSubmit={(event) => {
                 event.preventDefault();
                 const form = new FormData(event.currentTarget);
@@ -847,12 +860,33 @@ function NewIncident() {
                   ...(subcategoryId ? { subcategoryId } : {}),
                   summary: String(form.get("summary")).trim(),
                   description: String(form.get("description")).trim(),
-                  channel: session.user.role === "agent" ? String(form.get("channel")) : "Self Service",
-                  ...(session.user.role === "agent" ? { callerId: String(form.get("callerId")) } : {}),
+                  channel:
+                    session.user.role === "agent" ? String(form.get("channel")) : "Self Service",
+                  ...(session.user.role === "agent"
+                    ? { callerId: String(form.get("callerId")) }
+                    : {}),
                 });
               }}
             >
-              {session.user.role === "agent" && <><label>{t("caller")}<select name="callerId" required defaultValue={session.user.id}><option value={session.user.id}>{session.user.name}</option>{callers.data?.users.filter(user => user.id !== session.user.id).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>{callers.error && <Failure error={callers.error} />}<ChannelField /></>}
+              {session.user.role === "agent" && (
+                <>
+                  <label>
+                    {t("caller")}
+                    <select name="callerId" required defaultValue={session.user.id}>
+                      <option value={session.user.id}>{session.user.name}</option>
+                      {callers.data?.users
+                        .filter((user) => user.id !== session.user.id)
+                        .map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {callers.error && <Failure error={callers.error} />}
+                  <ChannelField />
+                </>
+              )}
               <label>
                 {t("category")}
                 <select
@@ -898,19 +932,15 @@ function NewIncident() {
                       team:
                         availableCategories
                           .find((category) => category.id === categoryId)
-                          ?.subcategories.find(
-                            (subcategory) => subcategory.id === subcategoryId,
-                          )?.departmentName ||
-                        availableCategories.find(
-                          (category) => category.id === categoryId,
-                        )?.departmentName,
+                          ?.subcategories.find((subcategory) => subcategory.id === subcategoryId)
+                          ?.departmentName ||
+                        availableCategories.find((category) => category.id === categoryId)
+                          ?.departmentName,
                     })}
                   </p>
                 </>
               )}
-              {availableCategories.length === 0 && (
-                <p className="error">{t("noCategories")}</p>
-              )}
+              {availableCategories.length === 0 && <p className="error">{t("noCategories")}</p>}
               <label>
                 {t("summary")}
                 <input
@@ -966,11 +996,9 @@ function NewIncident() {
           <CircleHelp size={22} />
           <h2>{t("requestInfo")}</h2>
           <ol>
-            {["requestStepOne", "requestStepTwo", "requestStepThree"].map(
-              (key) => (
-                <li key={key}>{t(key)}</li>
-              ),
-            )}
+            {["requestStepOne", "requestStepTwo", "requestStepThree"].map((key) => (
+              <li key={key}>{t(key)}</li>
+            ))}
           </ol>
         </aside>
       </div>
@@ -992,13 +1020,7 @@ function IncidentDetail() {
     queryFn: () => api<TicketDetail>(`/tickets/${encodeURIComponent(id!)}`),
   });
   const mutation = useMutation({
-    mutationFn: ({
-      action,
-      data,
-    }: {
-      action: string;
-      data: Record<string, unknown>;
-    }) =>
+    mutationFn: ({ action, data }: { action: string; data: Record<string, unknown> }) =>
       api<TicketDetail>(
         `/tickets/${encodeURIComponent(id!)}/${action}`,
         {
@@ -1010,7 +1032,8 @@ function IncidentDetail() {
     onSuccess: (ticket, variables) => {
       cache.setQueryData(["ticket", id], ticket);
       void cache.invalidateQueries({ queryKey: ["tickets"] });
-      if (variables.action === "messages") setBody(current => current.trim() === variables.data.body ? "" : current);
+      if (variables.action === "messages")
+        setBody((current) => (current.trim() === variables.data.body ? "" : current));
       void cache.invalidateQueries({ queryKey: ["ticket-history", id] });
       if (variables.action === "state") {
         setResolving(false);
@@ -1038,15 +1061,12 @@ function IncidentDetail() {
   const ticket = detail.data;
   if (!ticket) return null;
   const isAgent =
-    session.user.role === "agent" &&
-    session.user.departmentIds.includes(ticket.departmentId);
+    session.user.role === "agent" && session.user.departmentIds.includes(ticket.departmentId);
   const isRequester = session.user.id === ticket.callerId;
   const closed = ["Complete", "Cancelled", "Rejected"].includes(ticket.state);
   const canMessage =
-    !closed &&
-    (isAgent || isRequester || ticket.requestedForId === session.user.id);
-  const stateChange = (state: string) =>
-    mutation.mutate({ action: "state", data: { state } });
+    !closed && (isAgent || isRequester || ticket.requestedForId === session.user.id);
+  const stateChange = (state: string) => mutation.mutate({ action: "state", data: { state } });
   return (
     <div className="page detail-page">
       <Link className="back-link" to="/tickets">
@@ -1067,11 +1087,15 @@ function IncidentDetail() {
             <strong>{ticket.callerName}</strong>
           </Link>
           <span>·</span>
-          <time dateTime={ticket.createdAt}>
-            {date(ticket.createdAt, true)}
-          </time>
+          <time dateTime={ticket.createdAt}>{date(ticket.createdAt, true)}</time>
         </div>
-        {ticket.submittedById && ticket.submittedById !== ticket.callerId && <p className="detail-byline">{t("submittedBy")} <Link to={`/users/${ticket.submittedById}`}>{ticket.submittedByName}</Link> · {t("onBehalfOf")} <Link to={`/users/${ticket.callerId}`}>{ticket.callerName}</Link></p>}
+        {ticket.submittedById && ticket.submittedById !== ticket.callerId && (
+          <p className="detail-byline">
+            {t("submittedBy")}{" "}
+            <Link to={`/users/${ticket.submittedById}`}>{ticket.submittedByName}</Link> ·{" "}
+            {t("onBehalfOf")} <Link to={`/users/${ticket.callerId}`}>{ticket.callerName}</Link>
+          </p>
+        )}
       </div>
       {mutation.error && (
         <Failure
@@ -1148,9 +1172,7 @@ function IncidentDetail() {
                     key={activity.id}
                     className={`activity-entry ${activity.audience === "internal" ? "internal-entry" : ""}`}
                   >
-                    <span className="avatar activity-avatar">
-                      {initials(activity.authorName)}
-                    </span>
+                    <span className="avatar activity-avatar">{initials(activity.authorName)}</span>
                     <div className="activity-content">
                       <div className="activity-author">
                         <strong>{activity.authorName}</strong>
@@ -1160,9 +1182,7 @@ function IncidentDetail() {
                             {t("private")}
                           </span>
                         )}
-                        <time dateTime={activity.createdAt}>
-                          {date(activity.createdAt, true)}
-                        </time>
+                        <time dateTime={activity.createdAt}>{date(activity.createdAt, true)}</time>
                       </div>
                       <p className="preserve-text">{activity.body}</p>
                     </div>
@@ -1182,32 +1202,25 @@ function IncidentDetail() {
                 }}
               >
                 <div className="composer-tabs">
-                  {(
-                    [
-                      "customer",
-                      ...(isAgent ? (["internal"] as const) : []),
-                    ] as const
-                  ).map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      className={audience === value ? "selected" : ""}
-                      aria-pressed={audience === value}
-                      disabled={mutation.isPending}
-                      onClick={() => setAudience(value)}
-                    >
-                      {value === "internal" ? (
-                        <LockKeyhole size={14} />
-                      ) : (
-                        <MessageSquare size={14} />
-                      )}{" "}
-                      {t(
-                        value === "internal"
-                          ? "internalNote"
-                          : "customerMessage",
-                      )}
-                    </button>
-                  ))}
+                  {(["customer", ...(isAgent ? (["internal"] as const) : [])] as const).map(
+                    (value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={audience === value ? "selected" : ""}
+                        aria-pressed={audience === value}
+                        disabled={mutation.isPending}
+                        onClick={() => setAudience(value)}
+                      >
+                        {value === "internal" ? (
+                          <LockKeyhole size={14} />
+                        ) : (
+                          <MessageSquare size={14} />
+                        )}{" "}
+                        {t(value === "internal" ? "internalNote" : "customerMessage")}
+                      </button>
+                    ),
+                  )}
                 </div>
                 <label className="sr-only" htmlFor="message">
                   {t("message")}
@@ -1221,25 +1234,14 @@ function IncidentDetail() {
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
                   placeholder={t(
-                    audience === "internal"
-                      ? "notePlaceholder"
-                      : "messagePlaceholder",
+                    audience === "internal" ? "notePlaceholder" : "messagePlaceholder",
                   )}
                 />
                 <div className="composer-footer">
-                  <span>
-                    {t(audience === "internal" ? "internalHint" : "publicHint")}
-                  </span>
-                  <button
-                    className="button primary"
-                    disabled={mutation.isPending || !body.trim()}
-                  >
+                  <span>{t(audience === "internal" ? "internalHint" : "publicHint")}</span>
+                  <button className="button primary" disabled={mutation.isPending || !body.trim()}>
                     {t(
-                      mutation.isPending
-                        ? "sending"
-                        : audience === "internal"
-                          ? "addNote"
-                          : "send",
+                      mutation.isPending ? "sending" : audience === "internal" ? "addNote" : "send",
                     )}
                     <ArrowRight size={14} />
                   </button>
@@ -1253,28 +1255,18 @@ function IncidentDetail() {
               </div>
             )}
           </section>
-          <Attachments
-            session={session}
-            ticket={ticket}
-            isAgent={isAgent}
-            closed={closed}
-          />
+          <Attachments session={session} ticket={ticket} isAgent={isAgent} closed={closed} />
           <TicketHistory id={ticket.id} />
           {resolving && (
             <section className="form-panel resolution-panel">
-              <h2>
-                {t(
-                  ticket.type === "request" ? "fulfilRequest" : "resolveTitle",
-                )}
-              </h2>
+              <h2>{t(ticket.type === "request" ? "fulfilRequest" : "resolveTitle")}</h2>
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
                   mutation.mutate({
                     action: "state",
                     data: {
-                      state:
-                        ticket.type === "request" ? "Complete" : "Resolved",
+                      state: ticket.type === "request" ? "Complete" : "Resolved",
                       resolution: resolution.trim(),
                       customerSummary: customerSummary.trim(),
                     },
@@ -1313,11 +1305,7 @@ function IncidentDetail() {
                   </button>
                   <button
                     className="button primary"
-                    disabled={
-                      mutation.isPending ||
-                      !resolution.trim() ||
-                      !customerSummary.trim()
-                    }
+                    disabled={mutation.isPending || !resolution.trim() || !customerSummary.trim()}
                   >
                     {t(
                       mutation.isPending
@@ -1335,8 +1323,18 @@ function IncidentDetail() {
         <aside className="details-sidebar">
           <h2>{t("classification")}</h2>
           <dl>
-            <dt>{t("channel")}</dt><dd>{t(`channels.${ticket.channel}`)}</dd>
-            {ticket.duplicateOfId && <><dt>{t("duplicateOf")}</dt><dd><Link className="ticket-number" to={`/tickets/${ticket.duplicateOfId}`}>{t("viewOriginalTicket")}</Link></dd></>}
+            <dt>{t("channel")}</dt>
+            <dd>{t(`channels.${ticket.channel}`)}</dd>
+            {ticket.duplicateOfId && (
+              <>
+                <dt>{t("duplicateOf")}</dt>
+                <dd>
+                  <Link className="ticket-number" to={`/tickets/${ticket.duplicateOfId}`}>
+                    {t("viewOriginalTicket")}
+                  </Link>
+                </dd>
+              </>
+            )}
             <dt>{t("status")}</dt>
             <dd>
               <Status state={ticket.state} />
@@ -1407,11 +1405,9 @@ function IncidentDetail() {
   );
 }
 function App() {
-  const [resetting] = useState(() => location.hash.startsWith('#reset-password?'));
+  const [resetting] = useState(() => location.hash.startsWith("#reset-password?"));
   const [activating] = useState(
-    () =>
-      location.pathname === "/activate" ||
-      location.hash.startsWith("#activate?"),
+    () => location.pathname === "/activate" || location.hash.startsWith("#activate?"),
   );
   const session = useQuery({
     queryKey: ["session"],
@@ -1425,7 +1421,7 @@ function App() {
     },
   });
   if (resetting) return <Recovery mode="reset" />;
-  if (location.pathname === '/forgot-password') return <Recovery mode="forgot" />;
+  if (location.pathname === "/forgot-password") return <Recovery mode="forgot" />;
   if (activating) return <Activation />;
   if (session.isPending) return <Loading />;
   if (session.error)
@@ -1446,57 +1442,29 @@ function App() {
       <Route element={<Shell session={session.data} />}>
         {session.data.user.role === "admin" && !session.data.mfaVerified ? (
           <>
-            <Route
-              path="/authenticator"
-              element={<AuthenticatorSetup session={session.data} />}
-            />
-            <Route
-              path="*"
-              element={<Navigate to="/authenticator" replace />}
-            />
+            <Route path="/authenticator" element={<AuthenticatorSetup session={session.data} />} />
+            <Route path="*" element={<Navigate to="/authenticator" replace />} />
           </>
         ) : (
           <>
             <Route path="/tickets" element={<TicketList />} />
             <Route path="/tickets/new" element={<NewIncident />} />
-            <Route
-              path="/requests/new"
-              element={<NewRequest session={session.data} />}
-            />
-            <Route
-              path="/approvals"
-              element={<Approvals session={session.data} />}
-            />
-            <Route
-              path="/profile"
-              element={<Profile session={session.data} />}
-            />
-            <Route
-              path="/users/:id"
-              element={<Profile session={session.data} />}
-            />
+            <Route path="/requests/new" element={<NewRequest session={session.data} />} />
+            <Route path="/approvals" element={<Approvals session={session.data} />} />
+            <Route path="/profile" element={<Profile session={session.data} />} />
+            <Route path="/users/:id" element={<Profile session={session.data} />} />
             {session.data.user.role !== "employee" && (
-              <Route
-                path="/reports"
-                element={<Reports session={session.data} />}
-              />
+              <Route path="/reports" element={<Reports session={session.data} />} />
             )}
             <Route path="/tickets/:id" element={<IncidentDetail />} />
             {session.data.user.role === "admin" && (
-              <Route
-                path="/organisation"
-                element={<OrganisationSetup session={session.data} />}
-              />
+              <Route path="/organisation" element={<OrganisationSetup session={session.data} />} />
             )}
             <Route
               path="*"
               element={
                 <Navigate
-                  to={
-                    session.data.user.role === "admin"
-                      ? "/organisation"
-                      : "/tickets"
-                  }
+                  to={session.data.user.role === "admin" ? "/organisation" : "/tickets"}
                   replace
                 />
               }

@@ -31,9 +31,7 @@ export function Activation() {
   const [credentials] = useState(() => {
     const fragment = location.hash;
     const params = new URLSearchParams(
-      fragment.includes("?")
-        ? fragment.slice(fragment.indexOf("?") + 1)
-        : fragment.slice(1),
+      fragment.includes("?") ? fragment.slice(fragment.indexOf("?") + 1) : fragment.slice(1),
     );
     const value = {
       organisation: params.get("organisation") || "",
@@ -141,11 +139,7 @@ export function Profile({ session }: { session: SessionView }) {
   });
   const password = useMutation({
     mutationFn: (body: object) =>
-      api(
-        "/auth/password",
-        { method: "POST", body: JSON.stringify(body) },
-        session.csrfToken,
-      ),
+      api("/auth/password", { method: "POST", body: JSON.stringify(body) }, session.csrfToken),
     onSuccess: () => updateSession(cache, null),
   });
   const user = profile.data;
@@ -187,9 +181,7 @@ export function Profile({ session }: { session: SessionView }) {
           </section>
           <section className="form-panel">
             <h2>{t("ticketHistory")}</h2>
-            {user.limitReached && (
-              <p className="field-hint">{t("resultsLimit")}</p>
-            )}
+            {user.limitReached && <p className="field-hint">{t("resultsLimit")}</p>}
             {user.tickets?.map((ticket) => (
               <div className="config-record" key={ticket.id}>
                 <Link className="ticket-number" to={`/tickets/${ticket.id}`}>
@@ -198,9 +190,7 @@ export function Profile({ session }: { session: SessionView }) {
                 <p className="muted">{t(`states.${ticket.state}`)}</p>
               </div>
             ))}
-            {!user.tickets?.length && (
-              <p className="muted">{t("noTicketHistory")}</p>
-            )}
+            {!user.tickets?.length && <p className="muted">{t("noTicketHistory")}</p>}
           </section>
           {user.id === session.user.id && (
             <section className="form-panel">
@@ -237,10 +227,7 @@ export function Profile({ session }: { session: SessionView }) {
                   />
                 </label>
                 <ErrorNotice error={password.error} />
-                <button
-                  className="button primary"
-                  disabled={password.isPending}
-                >
+                <button className="button primary" disabled={password.isPending}>
                   {t("changePassword")}
                 </button>
               </form>
@@ -286,13 +273,7 @@ export function UsersPanel({ session }: { session: SessionView }) {
           <summary>
             {user.name}{" "}
             <span className="config-state">
-              {t(
-                user.active
-                  ? "active"
-                  : user.invitationPending
-                    ? "invited"
-                    : "inactive",
-              )}
+              {t(user.active ? "active" : user.invitationPending ? "invited" : "inactive")}
             </span>
           </summary>
           <UserForm
@@ -322,11 +303,7 @@ export function UsersPanel({ session }: { session: SessionView }) {
               {t("expiresAt", {
                 date: displayDate(invitation.expiresAt),
               })}
-              <input
-                readOnly
-                value={invitation.url}
-                onFocus={(e) => e.target.select()}
-              />
+              <input readOnly value={invitation.url} onFocus={(e) => e.target.select()} />
             </label>
           ))}
           <button className="text-button" onClick={() => setInvitations([])}>
@@ -381,9 +358,7 @@ function UserForm({
             homeDepartment: String(f.get("homeDepartment")),
             phone: String(f.get("phone")),
             jobTitle: String(f.get("jobTitle")),
-            ...(user
-              ? { active: f.has("active"), revision: user.revision }
-              : {}),
+            ...(user ? { active: f.has("active"), revision: user.revision } : {}),
           },
           {
             onSuccess: () => {
@@ -398,22 +373,11 @@ function UserForm({
         <div className="field-grid">
           <label>
             {t("fullName")}
-            <input
-              name="name"
-              required
-              maxLength={120}
-              defaultValue={user?.name}
-            />
+            <input name="name" required maxLength={120} defaultValue={user?.name} />
           </label>
           <label>
             {t("email")}
-            <input
-              name="email"
-              type="email"
-              required
-              maxLength={254}
-              defaultValue={user?.email}
-            />
+            <input name="email" type="email" required maxLength={254} defaultValue={user?.email} />
           </label>
         </div>
         <div className="field-grid">
@@ -450,11 +414,7 @@ function UserForm({
           ))}
         </div>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            name="approverEligible"
-            defaultChecked={user?.approverEligible}
-          />
+          <input type="checkbox" name="approverEligible" defaultChecked={user?.approverEligible} />
           {t("approverEligible")}
         </label>
         <label className="checkbox-label">
@@ -468,9 +428,7 @@ function UserForm({
           </label>
         )}
         <ErrorNotice error={save.error} />
-        <button className="button primary">
-          {t(user ? "saveChanges" : "inviteUser")}
-        </button>
+        <button className="button primary">{t(user ? "saveChanges" : "inviteUser")}</button>
       </fieldset>
     </form>
   );
@@ -488,7 +446,11 @@ function CsvImport({
   const preview = useMutation({
     mutationFn: () =>
       api<{
-        rows: { row: number; errors: string[]; user: { name: string; email: string; role: string } | null }[];
+        rows: {
+          row: number;
+          errors: string[];
+          user: { name: string; email: string; role: string } | null;
+        }[];
         valid: boolean;
         previewToken: string | null;
         expiresAt: string | null;
@@ -539,20 +501,25 @@ function CsvImport({
           />
         </label>
         <p className="field-hint">{t("csvHint")}</p>
-        <button
-          className="button secondary"
-          disabled={preview.isPending || commit.isPending}
-        >
+        <button className="button secondary" disabled={preview.isPending || commit.isPending}>
           {t("previewImport")}
         </button>
       </form>
       <ErrorNotice error={preview.error || commit.error} />
       {preview.data && (
         <div className="config-record">
-          <p role="status">
-            {t("importRows", { count: preview.data.rows.length })}
-          </p>
-          <div className="import-preview">{preview.data.rows.map(row => <div className="report-row" key={row.row}><span>{t("csvRow", { row: row.row })}</span><span>{row.user?.name} {row.user?.email}</span>{row.user && <span>{t(`roles.${row.user.role}`)}</span>}</div>)}</div>
+          <p role="status">{t("importRows", { count: preview.data.rows.length })}</p>
+          <div className="import-preview">
+            {preview.data.rows.map((row) => (
+              <div className="report-row" key={row.row}>
+                <span>{t("csvRow", { row: row.row })}</span>
+                <span>
+                  {row.user?.name} {row.user?.email}
+                </span>
+                {row.user && <span>{t(`roles.${row.user.role}`)}</span>}
+              </div>
+            ))}
+          </div>
           {preview.data.rows
             .filter((row) => row.errors.length)
             .map((row) => (
@@ -562,11 +529,7 @@ function CsvImport({
             ))}
           <button
             className="button primary"
-            disabled={
-              !preview.data.valid ||
-              !preview.data.previewToken ||
-              commit.isPending
-            }
+            disabled={!preview.data.valid || !preview.data.previewToken || commit.isPending}
             onClick={() => commit.mutate()}
           >
             {t("confirmImport")}
@@ -598,11 +561,7 @@ export function SettingsPanel({ session }: { session: SessionView }) {
   });
   const save = useMutation({
     mutationFn: (body: object) =>
-      api(
-        "/admin/settings",
-        { method: "POST", body: JSON.stringify(body) },
-        session.csrfToken,
-      ),
+      api("/admin/settings", { method: "POST", body: JSON.stringify(body) }, session.csrfToken),
     onSuccess: () => {
       void cache.invalidateQueries({ queryKey: ["admin-settings"] });
       void cache.invalidateQueries({ queryKey: ["session"] });
@@ -639,20 +598,12 @@ export function SettingsPanel({ session }: { session: SessionView }) {
             ).map((key) => (
               <label key={key}>
                 {t(`settingFields.${key}`)}
-                <input
-                  name={key}
-                  required
-                  maxLength={120}
-                  defaultValue={settings.data[key]}
-                />
+                <input name={key} required maxLength={120} defaultValue={settings.data[key]} />
               </label>
             ))}
             <label>
               {t("settingFields.defaultPriority")}
-              <select
-                name="defaultPriority"
-                defaultValue={settings.data.defaultPriority}
-              >
+              <select name="defaultPriority" defaultValue={settings.data.defaultPriority}>
                 {["P1", "P2", "P3", "P4", "P5"].map((value) => (
                   <option key={value}>{value}</option>
                 ))}

@@ -41,8 +41,14 @@ export function TicketManagement({
     mutationFn: async ({ path, body }: { path: string; body: Record<string, unknown> }) => {
       const { duplicateNumber, ...values } = body;
       if (duplicateNumber) {
-        const result = await api<{ tickets: { id: string; number: string }[] }>(`/tickets?${new URLSearchParams({ search: String(duplicateNumber) })}`);
-        const duplicate = result.tickets.find(row => row.number.toLowerCase() === String(duplicateNumber).toLowerCase() && row.id !== ticket.id);
+        const result = await api<{ tickets: { id: string; number: string }[] }>(
+          `/tickets?${new URLSearchParams({ search: String(duplicateNumber) })}`,
+        );
+        const duplicate = result.tickets.find(
+          (row) =>
+            row.number.toLowerCase() === String(duplicateNumber).toLowerCase() &&
+            row.id !== ticket.id,
+        );
         if (!duplicate) throw new ApiError(400, t("duplicateNotFound"));
         values.duplicateOfId = duplicate.id;
       }
@@ -60,11 +66,7 @@ export function TicketManagement({
       setAction("");
     },
   });
-  if (
-    closed ||
-    (!isAgent &&
-      !(isRequester && ["Open", "Pending Approval"].includes(ticket.state)))
-  )
+  if (closed || (!isAgent && !(isRequester && ["Open", "Pending Approval"].includes(ticket.state))))
     return null;
   return (
     <div className="ticket-management">
@@ -84,15 +86,11 @@ export function TicketManagement({
               <option value="triage">{t("triage")}</option>
               <option value="transfer">{t("transfer")}</option>
               <option value="category">{t("changeCategory")}</option>
-              {assignment.data?.canAssign && (
-                <option value="assign">{t("assignAgent")}</option>
-              )}
+              {assignment.data?.canAssign && <option value="assign">{t("assignAgent")}</option>}
               {["Open", "In Progress"].includes(ticket.state) && (
                 <option value="hold">{t("putOnHold")}</option>
               )}
-              {ticket.state === "On Hold" && (
-                <option value="resume">{t("resumeWork")}</option>
-              )}
+              {ticket.state === "On Hold" && <option value="resume">{t("resumeWork")}</option>}
             </>
           )}
           <option value="cancel">{t("cancelTicket")}</option>
@@ -115,7 +113,9 @@ export function TicketManagement({
                         ? "Cancelled"
                         : ticket.previousState || "In Progress",
                   reason,
-                  ...(action === "cancel" && f.get("duplicateNumber") ? { duplicateNumber: String(f.get("duplicateNumber")).trim() } : {}),
+                  ...(action === "cancel" && f.get("duplicateNumber")
+                    ? { duplicateNumber: String(f.get("duplicateNumber")).trim() }
+                    : {}),
                   ...(action === "hold" ? { holdReason: reason } : {}),
                 },
               });
@@ -131,12 +131,8 @@ export function TicketManagement({
                         severity: String(f.get("severity")),
                       }
                     : {}),
-                  ...(action === "transfer"
-                    ? { departmentId: f.get("departmentId") }
-                    : {}),
-                  ...(action === "assign"
-                    ? { assignedToId: f.get("assignedToId") || null }
-                    : {}),
+                  ...(action === "transfer" ? { departmentId: f.get("departmentId") } : {}),
+                  ...(action === "assign" ? { assignedToId: f.get("assignedToId") || null } : {}),
                   ...(action === "category"
                     ? {
                         categoryId,
@@ -149,7 +145,13 @@ export function TicketManagement({
               });
           }}
         >
-          {action === "cancel" && <label>{t("duplicateTicket")}<input name="duplicateNumber" maxLength={40} /><span className="field-hint">{t("duplicateHint")}</span></label>}
+          {action === "cancel" && (
+            <label>
+              {t("duplicateTicket")}
+              <input name="duplicateNumber" maxLength={40} />
+              <span className="field-hint">{t("duplicateHint")}</span>
+            </label>
+          )}
           {action === "triage" && (
             <>
               <label>
@@ -186,10 +188,7 @@ export function TicketManagement({
           {action === "assign" && (
             <label>
               {t("assignedTo")}
-              <select
-                name="assignedToId"
-                defaultValue={ticket.assignedToId || ""}
-              >
+              <select name="assignedToId" defaultValue={ticket.assignedToId || ""}>
                 <option value="">{t("unassigned")}</option>
                 {assignment.data?.users.map((user) => (
                   <option key={user.id} value={user.id}>
@@ -203,16 +202,18 @@ export function TicketManagement({
             <>
               <label>
                 {t("category")}
-                <select
-                  required
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                >
-                  {catalog.data?.categories.filter(category => ticket.type === "request" ? category.allowRequests !== false : category.allowIncidents !== false).map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
+                <select required value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                  {catalog.data?.categories
+                    .filter((category) =>
+                      ticket.type === "request"
+                        ? category.allowRequests !== false
+                        : category.allowIncidents !== false,
+                    )
+                    .map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label>
@@ -334,9 +335,9 @@ export function Attachments({
               const form = e.currentTarget;
               const file = new FormData(form).get("file") as File;
               if (files.data && file.size > files.data.maxFileBytes) {
-                (
-                  form.elements.namedItem("file") as HTMLInputElement
-                ).setCustomValidity(t("fileTooLarge"));
+                (form.elements.namedItem("file") as HTMLInputElement).setCustomValidity(
+                  t("fileTooLarge"),
+                );
                 form.reportValidity();
                 return;
               }
@@ -362,10 +363,7 @@ export function Attachments({
               </label>
             )}
             <p className="field-hint">{t("attachmentHint")}</p>
-            <button
-              className="button secondary"
-              disabled={upload.isPending || files.isPending}
-            >
+            <button className="button secondary" disabled={upload.isPending || files.isPending}>
               {t(upload.isPending ? "sending" : "upload")}
             </button>
           </form>
@@ -387,9 +385,7 @@ export function ReviseRequest({
   const options = useQuery({
     queryKey: ["request-catalog"],
     queryFn: () =>
-      api<{ items: RequestItem[]; users: { id: string; name: string }[] }>(
-        "/requests/catalog",
-      ),
+      api<{ items: RequestItem[]; users: { id: string; name: string }[] }>("/requests/catalog"),
     enabled: open,
   });
   const save = useMutation({
@@ -405,10 +401,7 @@ export function ReviseRequest({
     onSuccess: onSaved,
   });
   return (
-    <details
-      className="description-panel"
-      onToggle={(e) => setOpen(e.currentTarget.open)}
-    >
+    <details className="description-panel" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>{t("changeRequest")}</summary>
       <p className="field-hint">{t("changeRequestHint")}</p>
       <ErrorNotice error={options.error || save.error} />
@@ -427,9 +420,7 @@ export function ReviseRequest({
                 ? {
                     unitCostMinor: minorCost(
                       Number(f.get("unitCost")),
-                      options.data.items.find(
-                        (item) => item.id === f.get("itemId"),
-                      )!.currency,
+                      options.data.items.find((item) => item.id === f.get("itemId"))!.currency,
                     ),
                   }
                 : {}),
@@ -448,11 +439,7 @@ export function ReviseRequest({
           </label>
           <label>
             {t("requestedFor")}
-            <select
-              required
-              name="requestedForId"
-              defaultValue={ticket.requestedForId || ""}
-            >
+            <select required name="requestedForId" defaultValue={ticket.requestedForId || ""}>
               {options.data.users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
@@ -474,13 +461,7 @@ export function ReviseRequest({
             </label>
             <label>
               {t("correctedUnitCost")}
-              <input
-                name="unitCost"
-                type="number"
-                min={0}
-                max={20000000}
-                step="0.001"
-              />
+              <input name="unitCost" type="number" min={0} max={20000000} step="0.001" />
             </label>
           </div>
           <label>

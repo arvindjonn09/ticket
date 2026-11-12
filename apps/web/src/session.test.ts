@@ -22,9 +22,7 @@ it("keeps the active session observer connected on login and logout while removi
     enabled: false,
   });
   const observed: (SessionView | null | undefined)[] = [];
-  const unsubscribe = observer.subscribe((result) =>
-    observed.push(result.data),
-  );
+  const unsubscribe = observer.subscribe((result) => observed.push(result.data));
   const session: SessionView = {
     user: {
       id: "u1",

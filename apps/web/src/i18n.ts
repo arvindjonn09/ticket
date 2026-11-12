@@ -8,15 +8,46 @@ void i18n.use(initReactI18next).init({
   resources: {
     en: {
       translation: {
-        automationSettings: "Workflow automation", dataPolicySettings: "Files and retention", serviceHealth: "Service health", forgotPassword: "Forgot your password?",
-        deliveryMeasures: "Delivery measures", calendarHoursHint: "Elapsed calendar time (24/7), not business hours or an SLA. Based on up to 200 permitted tickets. A dash means no recorded sample. First response is the first public agent message; resolution uses the first recorded resolved or completed transition.",
-        reportMeasures: { openCount: "Open backlog", oldestOpenDays: "Oldest open ticket (days)", pendingApprovalCount: "Pending approvals", oldestApprovalHours: "Oldest pending request (hours)", medianFirstResponseHours: "Median first response (hours)", medianResolutionHours: "Median resolution (hours)" },
-        channel: "Channel", caller: "Caller / affected user", submittedBy: "Submitted by", onBehalfOf: "on behalf of", duplicateOf: "Duplicate of", viewOriginalTicket: "View original ticket",
-        channels: { "Self Service": "Self service", Email: "Email", Phone: "Phone", "Walk In": "Walk in" },
-        categoryFilter: "Filter by category", allCategories: "All categories", channelFilter: "Filter by channel", allChannels: "All channels", agentFilter: "Filter by support agent", allAgents: "All support agents",
-        queueReadinessWarning: "Queue owner or substitute not configured: {{groups}}. Select group members to cover assignment and escalation.",
-        duplicateTicket: "Duplicate ticket number (optional)", duplicateHint: "Link the original ticket when cancelling a duplicate.", duplicateNotFound: "Choose another ticket number you are authorised to view.",
-        requestedAt: "Requested {{date}}", waitingHours: "Waiting {{count}} hours",
+        automationSettings: "Workflow automation",
+        dataPolicySettings: "Files and retention",
+        serviceHealth: "Service health",
+        forgotPassword: "Forgot your password?",
+        deliveryMeasures: "Delivery measures",
+        calendarHoursHint:
+          "Elapsed calendar time (24/7), not business hours or an SLA. Based on up to 200 permitted tickets. A dash means no recorded sample. First response is the first public agent message; resolution uses the first recorded resolved or completed transition.",
+        reportMeasures: {
+          openCount: "Open backlog",
+          oldestOpenDays: "Oldest open ticket (days)",
+          pendingApprovalCount: "Pending approvals",
+          oldestApprovalHours: "Oldest pending request (hours)",
+          medianFirstResponseHours: "Median first response (hours)",
+          medianResolutionHours: "Median resolution (hours)",
+        },
+        channel: "Channel",
+        caller: "Caller / affected user",
+        submittedBy: "Submitted by",
+        onBehalfOf: "on behalf of",
+        duplicateOf: "Duplicate of",
+        viewOriginalTicket: "View original ticket",
+        channels: {
+          "Self Service": "Self service",
+          Email: "Email",
+          Phone: "Phone",
+          "Walk In": "Walk in",
+        },
+        categoryFilter: "Filter by category",
+        allCategories: "All categories",
+        channelFilter: "Filter by channel",
+        allChannels: "All channels",
+        agentFilter: "Filter by support agent",
+        allAgents: "All support agents",
+        queueReadinessWarning:
+          "Queue owner or substitute not configured: {{groups}}. Select group members to cover assignment and escalation.",
+        duplicateTicket: "Duplicate ticket number (optional)",
+        duplicateHint: "Link the original ticket when cancelling a duplicate.",
+        duplicateNotFound: "Choose another ticket number you are authorised to view.",
+        requestedAt: "Requested {{date}}",
+        waitingHours: "Waiting {{count}} hours",
         fulfilRequest: "Fulfil service request",
         completeRequest: "Complete request",
         assignAgent: "Assign a support agent",
@@ -41,8 +72,7 @@ void i18n.use(initReactI18next).init({
         submitRequest: "Submit request",
         requests: "Service requests",
         myApprovals: "My approvals",
-        approvalsIntro:
-          "Review request details and costs before recording your decision.",
+        approvalsIntro: "Review request details and costs before recording your decision.",
         noApprovals: "You have no approvals waiting for a decision.",
         reviewDecision: "Record a decision",
         reviewDetailsHint:
@@ -83,8 +113,7 @@ void i18n.use(initReactI18next).init({
         changeReason: "Reason for change",
         retryApprovals: "Re-evaluate approvals",
         activateAccount: "Activate your account",
-        activationIntro:
-          "Set a password to activate your organisation's invitation.",
+        activationIntro: "Set a password to activate your organisation's invitation.",
         activationDone: "Your account is active. Sign in to continue.",
         invalidInvitation:
           "This invitation link is incomplete. Ask your administrator for a new invitation.",
@@ -181,8 +210,7 @@ void i18n.use(initReactI18next).init({
         kilobytes: "KB",
         selectFile: "Choose a file",
         attachmentAudience: "Attachment visibility",
-        attachmentHint:
-          "Maximum 5 MB. Files appear only after security scanning succeeds.",
+        attachmentHint: "Maximum 5 MB. Files appear only after security scanning succeeds.",
         fileTooLarge: "Choose a file smaller than 5 MB.",
         upload: "Upload attachment",
         requestCatalog: "Request catalog & approval policies",
@@ -222,8 +250,7 @@ void i18n.use(initReactI18next).init({
         authenticatorCode: "Authenticator code",
         authenticatorCodeOptional: "Authenticator code (if configured)",
         mfaTitle: "Set up your authenticator",
-        mfaIntro:
-          "Protect your administrator account before configuring your organisation.",
+        mfaIntro: "Protect your administrator account before configuring your organisation.",
         mfaBegin: "Begin setup",
         mfaInstructions:
           "In your authenticator app, choose Add account and Scan QR code. Scan this code, then enter the six-digit code from the app below. Keep this QR code private.",
@@ -258,8 +285,7 @@ void i18n.use(initReactI18next).init({
         supportGroup: "Support group",
         chooseGroup: "Choose a support group",
         sensitiveCategory: "Sensitive category",
-        sensitiveHint:
-          "Sensitive incidents remain restricted to authorised support group members.",
+        sensitiveHint: "Sensitive incidents remain restricted to authorised support group members.",
         parentCategory: "Parent category",
         routingGroup: "Routing group",
         inheritGroup: "Inherit category group",
@@ -304,8 +330,7 @@ void i18n.use(initReactI18next).init({
         back: "Back to tickets",
         signIn: "Sign in",
         welcome: "A little help. A clear way forward.",
-        loginIntro:
-          "Report an issue, follow its progress, and get back to your day.",
+        loginIntro: "Report an issue, follow its progress, and get back to your day.",
         loginTitle: "Welcome back",
         loginSubtitle: "Sign in to your organisation’s service desk.",
         organisation: "Organisation",
@@ -313,12 +338,10 @@ void i18n.use(initReactI18next).init({
         email: "Email address",
         password: "Password",
         signingIn: "Signing in…",
-        loginFoot:
-          "Your organisation keeps your tickets and conversations private.",
+        loginFoot: "Your organisation keeps your tickets and conversations private.",
         listTitle: "Tickets",
         listIntroAgent: "A clear view of the work that needs your attention.",
-        listIntroEmployee:
-          "Your issues, conversations, and next steps in one place.",
+        listIntroEmployee: "Your issues, conversations, and next steps in one place.",
         search: "Search tickets",
         searchPlaceholder: "Search by number or summary…",
         stateFilter: "Filter by status",
@@ -331,8 +354,7 @@ void i18n.use(initReactI18next).init({
         completed: "Completed",
         total: "Total",
         matching: "{{count}} tickets",
-        resultsLimit:
-          "Showing up to 200 matches. Refine your search to see a smaller set.",
+        resultsLimit: "Showing up to 200 matches. Refine your search to see a smaller set.",
         number: "Ticket",
         subject: "Summary",
         status: "Status",
@@ -343,8 +365,7 @@ void i18n.use(initReactI18next).init({
         emptyText:
           "No tickets match this view. Report an issue, request a service, or adjust your filters.",
         createTitle: "Tell us what’s happening",
-        createIntro:
-          "A few details will help the right team get you back on track.",
+        createIntro: "A few details will help the right team get you back on track.",
         category: "What do you need help with?",
         chooseCategory: "Choose a category",
         routedTo: "Your issue will go to {{team}}.",
@@ -354,20 +375,15 @@ void i18n.use(initReactI18next).init({
         descriptionPlaceholder:
           "What were you trying to do? What happened instead? Include any useful details.",
         summaryHint: "5–160 characters",
-        descriptionHint:
-          "10–5,000 characters. Please don’t include passwords or secrets.",
+        descriptionHint: "10–5,000 characters. Please don’t include passwords or secrets.",
         submit: "Submit incident",
         submitting: "Submitting…",
         cancel: "Cancel",
         requestInfo: "What happens next",
-        requestStepOne:
-          "Your category directs the incident to the right support team.",
-        requestStepTwo:
-          "The team will follow up here if they need more information.",
-        requestStepThree:
-          "When the issue is resolved, you can confirm the fix or reopen it.",
-        noCategories:
-          "No categories are available. Please contact your service desk.",
+        requestStepOne: "Your category directs the incident to the right support team.",
+        requestStepTwo: "The team will follow up here if they need more information.",
+        requestStepThree: "When the issue is resolved, you can confirm the fix or reopen it.",
+        noCategories: "No categories are available. Please contact your service desk.",
         reportedBy: "Reported by",
         assignedTo: "Assigned to",
         created: "Created",
@@ -391,8 +407,7 @@ void i18n.use(initReactI18next).init({
         resolution: "Internal resolution",
         resolutionHint: "Document the cause and fix for support staff.",
         customerSummary: "Resolution for the requester",
-        customerSummaryHint:
-          "Explain what was fixed and what the requester should check.",
+        customerSummaryHint: "Explain what was fixed and what the requester should check.",
         markResolved: "Mark as resolved",
         confirmTitle: "Has this issue been fixed?",
         confirmText:
@@ -425,8 +440,7 @@ void i18n.use(initReactI18next).init({
         emailPlaceholder: "you@company.com",
         demoTitle: "Local demo accounts",
         demoOrgs: "Organisation: harbour or northstar",
-        demoUsers:
-          "Email: employee@demo.test, agent@demo.test or admin@demo.test",
+        demoUsers: "Email: employee@demo.test, agent@demo.test or admin@demo.test",
         demoPassword: "Password: Astrama-demo-2026!",
       },
     },

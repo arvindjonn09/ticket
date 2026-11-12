@@ -43,7 +43,13 @@ services:
       CLAMAV_HOST: scanner
     depends_on: { setup: { condition: service_completed_successfully } }
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:4311/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4311/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
       interval: 5s
       timeout: 3s
       retries: 15
@@ -72,7 +78,11 @@ services:
       S3_BUCKET: astrama-attachments
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-astrama-local}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-astrama-local-storage-password}
-    depends_on: { storage: { condition: service_started }, setup: { condition: service_completed_successfully } }
+    depends_on:
+      {
+        storage: { condition: service_started },
+        setup: { condition: service_completed_successfully },
+      }
   scanner:
     image: clamav/clamav@sha256:45fe5149fbee5a46509c9848ef20d0c354b7b2323c9369f285939a37cf33422a
     volumes: ["astrama-scanner:/var/lib/clamav"]
@@ -93,7 +103,8 @@ services:
       SMTP_PORT: 1025
       SMTP_FROM: Astrama <service-desk@astrama.test>
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set a 64-character random hex MFA encryption key in .env}
-    depends_on: { setup: { condition: service_completed_successfully }, mail: { condition: service_started } }
+    depends_on:
+      { setup: { condition: service_completed_successfully }, mail: { condition: service_started } }
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "apps/api/dist/worker-health.js"]

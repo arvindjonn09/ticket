@@ -5,13 +5,7 @@ import { api } from "./api";
 import { majorCost, minorCost } from "./money";
 import { ErrorNotice, type RequestItem } from "./completion";
 
-export function RequestItems({
-  session,
-  config,
-}: {
-  session: SessionView;
-  config: AdminConfig;
-}) {
+export function RequestItems({ session, config }: { session: SessionView; config: AdminConfig }) {
   const { t } = useTranslation();
   const catalog = useQuery({
     queryKey: ["admin-request-items"],
@@ -27,21 +21,12 @@ export function RequestItems({
       <ErrorNotice error={catalog.error} />
       {catalog.data && (
         <>
-          <ItemForm
-            session={session}
-            config={config}
-            approvers={catalog.data.approvers}
-          />
+          <ItemForm session={session} config={config} approvers={catalog.data.approvers} />
           {catalog.data.items.map((item) => (
-            <details
-              key={`${item.id}-${item.revision}`}
-              className="config-record"
-            >
+            <details key={`${item.id}-${item.revision}`} className="config-record">
               <summary>
                 {item.name}{" "}
-                <span className="config-state">
-                  {t(item.active ? "active" : "archived")}
-                </span>
+                <span className="config-state">{t(item.active ? "active" : "archived")}</span>
               </summary>
               <ItemForm
                 session={session}
@@ -92,25 +77,17 @@ function ItemForm({
           {
             name: String(f.get("name")).trim(),
             categoryId: f.get("categoryId"),
-            unitCostMinor: minorCost(
-              Number(f.get("unitCost")),
-              String(f.get("currency")),
-            ),
+            unitCostMinor: minorCost(Number(f.get("unitCost")), String(f.get("currency"))),
             currency: String(f.get("currency")).toUpperCase(),
             recurringPeriod: f.get("recurringPeriod") || null,
             requiresManager: f.has("requiresManager"),
             requiresVp: f.has("requiresVp"),
             vpThresholdMinor: f.get("vpThreshold")
-              ? minorCost(
-                  Number(f.get("vpThreshold")),
-                  String(f.get("currency")),
-                )
+              ? minorCost(Number(f.get("vpThreshold")), String(f.get("currency")))
               : null,
             alternateApproverId: f.get("alternateApproverId") || null,
             vpApproverId: f.get("vpApproverId") || null,
-            ...(item
-              ? { revision: item.revision, active: f.has("active") }
-              : {}),
+            ...(item ? { revision: item.revision, active: f.has("active") } : {}),
           },
           {
             onSuccess: () => {
@@ -124,23 +101,16 @@ function ItemForm({
         <legend>{t(item ? "editItem" : "createItem")}</legend>
         <label>
           {t("itemName")}
-          <input
-            name="name"
-            required
-            maxLength={120}
-            defaultValue={item?.name}
-          />
+          <input name="name" required maxLength={120} defaultValue={item?.name} />
         </label>
         <label>
           {t("category")}
-          <select
-            name="categoryId"
-            required
-            defaultValue={item?.categoryId || ""}
-          >
+          <select name="categoryId" required defaultValue={item?.categoryId || ""}>
             <option value="">{t("chooseCategory")}</option>
             {config.categories
-              .filter((row) => (row.active && row.allowRequests !== false) || row.id === item?.categoryId)
+              .filter(
+                (row) => (row.active && row.allowRequests !== false) || row.id === item?.categoryId,
+              )
               .map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
@@ -158,9 +128,7 @@ function ItemForm({
               min={0}
               max={100000000}
               step="0.001"
-              defaultValue={
-                item ? majorCost(item.unitCostMinor, item.currency) : 0
-              }
+              defaultValue={item ? majorCost(item.unitCostMinor, item.currency) : 0}
             />
           </label>
           <label>
@@ -177,10 +145,7 @@ function ItemForm({
           </label>
           <label>
             {t("billingPeriod")}
-            <select
-              name="recurringPeriod"
-              defaultValue={item?.recurringPeriod || ""}
-            >
+            <select name="recurringPeriod" defaultValue={item?.recurringPeriod || ""}>
               <option value="">{t("oneTime")}</option>
               <option value="month">{t("monthly")}</option>
               <option value="year">{t("annual")}</option>
@@ -188,19 +153,11 @@ function ItemForm({
           </label>
         </div>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            name="requiresManager"
-            defaultChecked={item?.requiresManager}
-          />
+          <input type="checkbox" name="requiresManager" defaultChecked={item?.requiresManager} />
           {t("requiresManager")}
         </label>
         <label className="checkbox-label">
-          <input
-            type="checkbox"
-            name="requiresVp"
-            defaultChecked={item?.requiresVp}
-          />
+          <input type="checkbox" name="requiresVp" defaultChecked={item?.requiresVp} />
           {t("requiresVp")}
         </label>
         <label>
@@ -212,8 +169,7 @@ function ItemForm({
             max={100000000}
             step="0.001"
             defaultValue={
-              item?.vpThresholdMinor === null ||
-              item?.vpThresholdMinor === undefined
+              item?.vpThresholdMinor === null || item?.vpThresholdMinor === undefined
                 ? ""
                 : majorCost(item.vpThresholdMinor, item.currency)
             }
@@ -242,9 +198,7 @@ function ItemForm({
           </label>
         )}
         <ErrorNotice error={save.error} />
-        <button className="button primary">
-          {t(item ? "saveChanges" : "createItem")}
-        </button>
+        <button className="button primary">{t(item ? "saveChanges" : "createItem")}</button>
       </fieldset>
     </form>
   );

@@ -17,23 +17,23 @@ Requirements below come from `plan.md` and subsequent agreed updates. Recommenda
 
 ## 2. Ticket Types and Numbering
 
-| Type | Purpose | Numbering |
-| --- | --- | --- |
-| Incident | Restore something that previously worked and is now broken or degraded. | `INC0001`, `INC0002`, and onward. |
-| Service request | Request a new item, software, access, or standard service. | `SR0001`, `SR0002`, and onward. |
+| Type            | Purpose                                                                 | Numbering                         |
+| --------------- | ----------------------------------------------------------------------- | --------------------------------- |
+| Incident        | Restore something that previously worked and is now broken or degraded. | `INC0001`, `INC0002`, and onward. |
+| Service request | Request a new item, software, access, or standard service.              | `SR0001`, `SR0002`, and onward.   |
 
 Generate numbers automatically using independent counters per tenant and ticket type. Use at least four numeric digits, allowing growth beyond `9999`. Enforce uniqueness on `(tenant_id, type, sequence)`; different companies may each have `INC0001`. Display identifiers are immutable once issued, including their prefix, and never reused within a tenant/type. Concurrent submissions must not produce duplicates; sequence gaps are acceptable.
 
 ## 3. Roles and Permissions
 
-| Role | Main capabilities |
-| --- | --- |
-| Employee / requester | Submit tickets, track permitted tickets, send customer messages, and attach files. |
-| Approver | Review assigned approvals, inspect relevant request details, and approve or reject. |
-| Support agent | Triage, claim tickets in their own groups, investigate, communicate, add internal notes, transfer misrouted tickets with a reason, and record resolution or fulfilment. |
-| Queue lead (proposed) | A support agent who is the department's queue owner or substitute. Can additionally assign tickets to other group members, reassign claimed work, and handle escalations for that group. This is the "authorized lead" in section 6. |
-| Ticketing administrator | Manage users, departments, assignment groups, categories/subcategories, category-to-department mappings, request items, approval rules, and settings for their company. |
-| Platform operator (proposed, for commercial use) | Vendor-side role that provisions customer companies (tenants) and supports operations. Has no access to customer ticket contents by default. |
+| Role                                             | Main capabilities                                                                                                                                                                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Employee / requester                             | Submit tickets, track permitted tickets, send customer messages, and attach files.                                                                                                                                                   |
+| Approver                                         | Review assigned approvals, inspect relevant request details, and approve or reject.                                                                                                                                                  |
+| Support agent                                    | Triage, claim tickets in their own groups, investigate, communicate, add internal notes, transfer misrouted tickets with a reason, and record resolution or fulfilment.                                                              |
+| Queue lead (proposed)                            | A support agent who is the department's queue owner or substitute. Can additionally assign tickets to other group members, reassign claimed work, and handle escalations for that group. This is the "authorized lead" in section 6. |
+| Ticketing administrator                          | Manage users, departments, assignment groups, categories/subcategories, category-to-department mappings, request items, approval rules, and settings for their company.                                                              |
+| Platform operator (proposed, for commercial use) | Vendor-side role that provisions customer companies (tenants) and supports operations. Has no access to customer ticket contents by default.                                                                                         |
 
 Recommended access rules:
 
@@ -45,25 +45,25 @@ Recommended access rules:
 
 ## 4. Incident Fields
 
-| Field | Requirement |
-| --- | --- |
-| Number | Automatically generated `INC` identifier; read-only. |
-| Caller | User reporting or experiencing the issue. Record the submitting user separately when created on someone's behalf. |
-| Channel | Email, Phone, Self Service, Walk In. |
-| Category | Administrator-managed options; initially Hardware, Software, Application, Networking, Server, Security. Determines the responsible department. |
-| Subcategory | Options depend on the category selected. |
-| Short description | Required summary of the issue. |
-| Description | Recommended additional field for symptoms and supporting details. |
-| Attachments | Broad format support, subject to the attachment policy in section 10. |
-| Priority | P1 through P5. |
-| Severity | S1 through S4. |
-| State | Open, In Progress, On Hold, Resolved, Complete, Cancelled. |
-| Assignment group | Automatically selected department queue based on category; authorized staff can transfer with a reason. |
-| Assigned to | Responsible agent; must belong to the selected assignment group. |
-| Work notes | Internal support notes. |
-| Resolution | Internal record of the fix, reusable as internal knowledge. |
-| Customer message | Communication visible to the customer. |
-| Audit details | Recommended: created at/by, updated at/by, and material change history. |
+| Field             | Requirement                                                                                                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Number            | Automatically generated `INC` identifier; read-only.                                                                                           |
+| Caller            | User reporting or experiencing the issue. Record the submitting user separately when created on someone's behalf.                              |
+| Channel           | Email, Phone, Self Service, Walk In.                                                                                                           |
+| Category          | Administrator-managed options; initially Hardware, Software, Application, Networking, Server, Security. Determines the responsible department. |
+| Subcategory       | Options depend on the category selected.                                                                                                       |
+| Short description | Required summary of the issue.                                                                                                                 |
+| Description       | Recommended additional field for symptoms and supporting details.                                                                              |
+| Attachments       | Broad format support, subject to the attachment policy in section 10.                                                                          |
+| Priority          | P1 through P5.                                                                                                                                 |
+| Severity          | S1 through S4.                                                                                                                                 |
+| State             | Open, In Progress, On Hold, Resolved, Complete, Cancelled.                                                                                     |
+| Assignment group  | Automatically selected department queue based on category; authorized staff can transfer with a reason.                                        |
+| Assigned to       | Responsible agent; must belong to the selected assignment group.                                                                               |
+| Work notes        | Internal support notes.                                                                                                                        |
+| Resolution        | Internal record of the fix, reusable as internal knowledge.                                                                                    |
+| Customer message  | Communication visible to the customer.                                                                                                         |
+| Audit details     | Recommended: created at/by, updated at/by, and material change history.                                                                        |
 
 ### Proposed incident workflow
 
@@ -83,46 +83,46 @@ Retain “Complete” as the final closed state from the source plan; avoid addi
 
 Priority determines work order and response expectations. Severity describes the scale of disruption. Agents should consider business impact and urgency when setting priority; severity alone does not determine it.
 
-| Priority | Proposed meaning |
-| --- | --- |
-| P1 — Critical | Immediate attention for a critical business disruption. |
-| P2 — High | Significant disruption requiring prompt attention. |
-| P3 — Medium | Normal operational issue requiring scheduled support. |
-| P4 — Low | Limited disruption with a usable workaround. |
+| Priority      | Proposed meaning                                          |
+| ------------- | --------------------------------------------------------- |
+| P1 — Critical | Immediate attention for a critical business disruption.   |
+| P2 — High     | Significant disruption requiring prompt attention.        |
+| P3 — Medium   | Normal operational issue requiring scheduled support.     |
+| P4 — Low      | Limited disruption with a usable workaround.              |
 | P5 — Planning | Lowest urgency; work can be scheduled with the requester. |
 
-| Severity | Proposed meaning |
-| --- | --- |
-| S1 — Critical | Critical service unavailable with broad business impact. |
-| S2 — Major | Major loss of functionality or multiple users affected. |
+| Severity      | Proposed meaning                                          |
+| ------------- | --------------------------------------------------------- |
+| S1 — Critical | Critical service unavailable with broad business impact.  |
+| S2 — Major    | Major loss of functionality or multiple users affected.   |
 | S3 — Moderate | Limited disruption affecting a small group or individual. |
-| S4 — Minor | Minor degradation with little operational impact. |
+| S4 — Minor    | Minor degradation with little operational impact.         |
 
 Record reasons for priority changes. Agree support hours, response targets, escalation ownership, and SLA pause rules before enabling timers. These proposed labels do not establish service commitments.
 
 ## 5. Service Request Fields
 
-| Field | Requirement |
-| --- | --- |
-| Number | Automatically generated `SR` identifier; read-only. |
-| Requested by | User submitting the request. |
-| Requested for | User receiving the item or service. |
-| Channel | Email, Phone, Self Service, Walk In (same as incidents). |
-| Short description | Required summary. |
-| Description | Recommended details of what is needed. |
-| State | Open, Pending Approval, In Progress, On Hold, Rejected, Complete, Cancelled. |
-| Request item | One catalog item per request for the initial release (proposed): software, application, access, equipment, or service. |
-| Category | Administrator-managed options, including Application and Software. Determines the responsible department; administrators control applicability to incidents and requests. |
-| Subcategory | Options depend on the selected category. |
-| Approval manager | Manager responsible for approval. |
-| Additional approval | VP approval for designated software or requests meeting a configured cost rule. |
-| Priority | P1 through P5; support validates urgency. |
-| Assignment group | Automatically selected department queue based on category. Approval requirements still apply before fulfilment. |
-| Assigned to | Agent within the selected group. |
-| Cost details | Recommended: quantity, unit price, total, currency, and recurring billing period when relevant. |
-| Justification | Recommended business reason for requests requiring approval. |
-| Messages and attachments | Recommended: reuse incident communication and visibility controls. |
-| Audit details | Recommended creation, changes, approval decisions, and fulfilment history. |
+| Field                    | Requirement                                                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Number                   | Automatically generated `SR` identifier; read-only.                                                                                                                       |
+| Requested by             | User submitting the request.                                                                                                                                              |
+| Requested for            | User receiving the item or service.                                                                                                                                       |
+| Channel                  | Email, Phone, Self Service, Walk In (same as incidents).                                                                                                                  |
+| Short description        | Required summary.                                                                                                                                                         |
+| Description              | Recommended details of what is needed.                                                                                                                                    |
+| State                    | Open, Pending Approval, In Progress, On Hold, Rejected, Complete, Cancelled.                                                                                              |
+| Request item             | One catalog item per request for the initial release (proposed): software, application, access, equipment, or service.                                                    |
+| Category                 | Administrator-managed options, including Application and Software. Determines the responsible department; administrators control applicability to incidents and requests. |
+| Subcategory              | Options depend on the selected category.                                                                                                                                  |
+| Approval manager         | Manager responsible for approval.                                                                                                                                         |
+| Additional approval      | VP approval for designated software or requests meeting a configured cost rule.                                                                                           |
+| Priority                 | P1 through P5; support validates urgency.                                                                                                                                 |
+| Assignment group         | Automatically selected department queue based on category. Approval requirements still apply before fulfilment.                                                           |
+| Assigned to              | Agent within the selected group.                                                                                                                                          |
+| Cost details             | Recommended: quantity, unit price, total, currency, and recurring billing period when relevant.                                                                           |
+| Justification            | Recommended business reason for requests requiring approval.                                                                                                              |
+| Messages and attachments | Recommended: reuse incident communication and visibility controls.                                                                                                        |
+| Audit details            | Recommended creation, changes, approval decisions, and fulfilment history.                                                                                                |
 
 ### Proposed request workflow and approval rules
 
@@ -173,14 +173,14 @@ Do not allow a category to be activated without a valid routing destination. Rev
 
 Example initial mappings and subcategories, to be confirmed by the company. These are configurable examples, not required separate departments:
 
-| Category | Example subcategories | Responsible department / queue |
-| --- | --- | --- |
-| Hardware | Laptop, Desktop, Monitor, Printer | IT Support |
-| Software | Installation, Update, Licensing | IT Support |
-| Application | Login, Error, Performance | Application Support |
-| Networking | Wi-Fi, VPN, Internet | IT Infrastructure |
-| Server | Availability, Storage, Backup | IT Infrastructure |
-| Security | Suspicious Email, Account Compromise, Malware | Security Support (restricted) |
+| Category    | Example subcategories                         | Responsible department / queue |
+| ----------- | --------------------------------------------- | ------------------------------ |
+| Hardware    | Laptop, Desktop, Monitor, Printer             | IT Support                     |
+| Software    | Installation, Update, Licensing               | IT Support                     |
+| Application | Login, Error, Performance                     | Application Support            |
+| Networking  | Wi-Fi, VPN, Internet                          | IT Infrastructure              |
+| Server      | Availability, Storage, Backup                 | IT Infrastructure              |
+| Security    | Suspicious Email, Account Compromise, Malware | Security Support (restricted)  |
 
 For a small support team, IT Support may handle several or all of these categories. The administrator can later add categories such as Payroll or Facilities and map them to the relevant departments without changing the ticket forms or requiring a software release.
 
@@ -270,13 +270,13 @@ These are proposed operating choices for this system, rather than a recommendati
 
 ## 12. Delivery Phases
 
-| Phase | Deliverables | Completion check |
-| --- | --- | --- |
-| 1. Confirm rules | 100-user setup, roles, departments/groups, category mappings, workflows, priorities, approval rules, attachment policy. | Business decisions and initial routing destinations are documented. |
-| 2. Core tickets | Access, profiles, numbering, forms, administrator category management, automatic department routing, triage fallback, queues, assignment, messages, attachments, audit history. | Both ticket types reach the correct department automatically; category changes require no software release. |
-| 3. Approvals | Request items, costs, manager/VP routing, approval queue, rejection handling. | Fulfilment cannot bypass approvals; material changes invalidate stale decisions. |
-| 4. Launch readiness | Notifications, internal resolution search, basic reporting, permissions, backup/restore checks. | End-to-end workflows and recovery checks pass. |
-| 5. Later improvements | Automatic email intake, reviewed knowledge articles, agreed SLA timers, extra routing automation. | Each improvement has a demonstrated business need and acceptance criteria. |
+| Phase                 | Deliverables                                                                                                                                                                    | Completion check                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 1. Confirm rules      | 100-user setup, roles, departments/groups, category mappings, workflows, priorities, approval rules, attachment policy.                                                         | Business decisions and initial routing destinations are documented.                                         |
+| 2. Core tickets       | Access, profiles, numbering, forms, administrator category management, automatic department routing, triage fallback, queues, assignment, messages, attachments, audit history. | Both ticket types reach the correct department automatically; category changes require no software release. |
+| 3. Approvals          | Request items, costs, manager/VP routing, approval queue, rejection handling.                                                                                                   | Fulfilment cannot bypass approvals; material changes invalidate stale decisions.                            |
+| 4. Launch readiness   | Notifications, internal resolution search, basic reporting, permissions, backup/restore checks.                                                                                 | End-to-end workflows and recovery checks pass.                                                              |
+| 5. Later improvements | Automatic email intake, reviewed knowledge articles, agreed SLA timers, extra routing automation.                                                                               | Each improvement has a demonstrated business need and acceptance criteria.                                  |
 
 Manual Email channel recording is part of the core; automatic mailbox integration is proposed for later. Confirm if automatic intake is needed at launch.
 
@@ -353,12 +353,12 @@ These primary sources informed the recommendations. Proposed policies above stil
 
 The following is the consolidated recommendation from the specialist reviews, coordinated by the primary agent. It is a proposed implementation design, not evidence that an application has been built or load tested.
 
-| Perspective | Design decision | Business benefit |
-| --- | --- | --- |
-| Systems engineer | One web application, relational database, private file storage, and a small retryable job runner. Central authorization and recoverable deployments. | A manageable operating footprint with reliable routing and recovery. |
-| Data engineer | Stable identifiers, relational integrity, transactional writes, versioned approvals, explicit message audiences, and recorded state changes. | Trustworthy history, consistent approvals, and meaningful reporting. |
-| Systems analyst | Two guided submission paths, clear state transitions, category-driven queues, accountable owners, and a complete workflow pilot. | Employees can get help without understanding internal department structures. |
-| CEO / business sponsor | Fixed first-release scope, named operational owners, an ownership-cost assessment, and measurable service outcomes. | Predictable investment and demonstrable value for the company. |
+| Perspective            | Design decision                                                                                                                                      | Business benefit                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Systems engineer       | One web application, relational database, private file storage, and a small retryable job runner. Central authorization and recoverable deployments. | A manageable operating footprint with reliable routing and recovery.         |
+| Data engineer          | Stable identifiers, relational integrity, transactional writes, versioned approvals, explicit message audiences, and recorded state changes.         | Trustworthy history, consistent approvals, and meaningful reporting.         |
+| Systems analyst        | Two guided submission paths, clear state transitions, category-driven queues, accountable owners, and a complete workflow pilot.                     | Employees can get help without understanding internal department structures. |
+| CEO / business sponsor | Fixed first-release scope, named operational owners, an ownership-cost assessment, and measurable service outcomes.                                  | Predictable investment and demonstrable value for the company.               |
 
 ## 17. Proposed Application Architecture
 
@@ -394,23 +394,23 @@ Keep the first release free of microservices, a separate analytics warehouse, a 
 
 This is a logical model; final table names and migrations belong to implementation.
 
-| Record | Core information |
-| --- | --- |
-| Tenant (customer company) | Stable ID, name, status, branding, timezone, locale, and plan/licence details. Every business record below carries a tenant reference. |
-| User | Stable ID, tenant, identity subject, contact details, home department, manager, active status, and roles. |
-| Credential and session | Password hash (Argon2id), MFA secret where enabled, failed-attempt counter/lockout, password-reset tokens (hashed, expiring), and revocable sessions. Replaced or supplemented by SSO later. |
-| Department and membership | Department/queue, owner, substitute, active support members. For launch, the department's queue is its assignment group; avoid duplicate independently editable routing destinations. |
-| Category / subcategory | Stable ID, label, active status, applicable ticket types, destination department, and parent category where applicable. |
-| Ticket | Internal ID, type, sequence, submitting and affected users, category/subcategory, state, priority, incident severity, current destination/assignee, sensitivity, revision, and timestamps. |
-| Catalog item | Stable ID, name, description, category, active status, default unit price/currency, billing period, and flags: requires manager approval, always requires VP approval. |
-| Approval rule and approver mapping | Cost threshold, currency, recurring-cost basis, the VP (or VP per department) and alternate approvers, with effective dates and change history. |
-| Tenant settings | Business hours, holidays, auto-close period, attachment limits/allowed types, notification templates, and number prefixes. |
-| Request details | Item and approved cost snapshot, quantity, exact decimal price, currency, billing period, and justification. |
-| Approval | Ticket/request revision, stage, resolved approver identity, pending/approved/rejected/superseded status, decision time, and comment. |
-| Activity and audit | Author, timestamp, kind, customer/internal audience, messages, state/assignment changes, and routing decision with mapping revision or audit reference. |
-| Attachment | Ticket/activity reference, storage key, uploader, audience, filename, size, detected type, and scan status. |
-| Notification job | Event, recipient, delivery state, attempt count, next retry, and failure summary. |
-| Notification outbox | Tenant, stable event ID, authorized business-record reference, event kind, publication state, and timestamps; inserted with the business transaction and dispatched to pg-boss after commit. |
+| Record                             | Core information                                                                                                                                                                             |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant (customer company)          | Stable ID, name, status, branding, timezone, locale, and plan/licence details. Every business record below carries a tenant reference.                                                       |
+| User                               | Stable ID, tenant, identity subject, contact details, home department, manager, active status, and roles.                                                                                    |
+| Credential and session             | Password hash (Argon2id), MFA secret where enabled, failed-attempt counter/lockout, password-reset tokens (hashed, expiring), and revocable sessions. Replaced or supplemented by SSO later. |
+| Department and membership          | Department/queue, owner, substitute, active support members. For launch, the department's queue is its assignment group; avoid duplicate independently editable routing destinations.        |
+| Category / subcategory             | Stable ID, label, active status, applicable ticket types, destination department, and parent category where applicable.                                                                      |
+| Ticket                             | Internal ID, type, sequence, submitting and affected users, category/subcategory, state, priority, incident severity, current destination/assignee, sensitivity, revision, and timestamps.   |
+| Catalog item                       | Stable ID, name, description, category, active status, default unit price/currency, billing period, and flags: requires manager approval, always requires VP approval.                       |
+| Approval rule and approver mapping | Cost threshold, currency, recurring-cost basis, the VP (or VP per department) and alternate approvers, with effective dates and change history.                                              |
+| Tenant settings                    | Business hours, holidays, auto-close period, attachment limits/allowed types, notification templates, and number prefixes.                                                                   |
+| Request details                    | Item and approved cost snapshot, quantity, exact decimal price, currency, billing period, and justification.                                                                                 |
+| Approval                           | Ticket/request revision, stage, resolved approver identity, pending/approved/rejected/superseded status, decision time, and comment.                                                         |
+| Activity and audit                 | Author, timestamp, kind, customer/internal audience, messages, state/assignment changes, and routing decision with mapping revision or audit reference.                                      |
+| Attachment                         | Ticket/activity reference, storage key, uploader, audience, filename, size, detected type, and scan status.                                                                                  |
+| Notification job                   | Event, recipient, delivery state, attempt count, next retry, and failure summary.                                                                                                            |
+| Notification outbox                | Tenant, stable event ID, authorized business-record reference, event kind, publication state, and timestamps; inserted with the business transaction and dispatched to pg-boss after commit. |
 
 Integrity rules:
 
@@ -430,13 +430,13 @@ Use database uniqueness and referential constraints where appropriate; enforce c
 
 ## 19. Ownership, Cost, and Success Measures
 
-| Accountable owner | Responsibility |
-| --- | --- |
-| Business sponsor | Scope, funding, value, and acceptance of business policies. |
-| Service owner | Daily operation, support hours, escalation, training, and service reporting. |
-| Department queue owner and substitute | Unclaimed work, holds, workload, and overdue approvals needing escalation. |
-| Ticketing administrator | Categories, routing configuration, memberships, and catalog maintenance. |
-| Technical owner | Delivery, patching, identity integration, monitoring, backups, and recovery. |
+| Accountable owner                     | Responsibility                                                               |
+| ------------------------------------- | ---------------------------------------------------------------------------- |
+| Business sponsor                      | Scope, funding, value, and acceptance of business policies.                  |
+| Service owner                         | Daily operation, support hours, escalation, training, and service reporting. |
+| Department queue owner and substitute | Unclaimed work, holds, workload, and overdue approvals needing escalation.   |
+| Ticketing administrator               | Categories, routing configuration, memberships, and catalog maintenance.     |
+| Technical owner                       | Delivery, patching, identity integration, monitoring, backups, and recovery. |
 
 Before committing implementation spend, compare configuring an existing system with a custom build against the same acceptance scenarios. Include delivery/configuration, licenses if applicable, hosting, integration, support time, maintenance, backups, and training. This is a decision checkpoint, not a vendor or purchase recommendation; no costs or savings have been established.
 
@@ -459,13 +459,13 @@ Use the primary agent as orchestrator with bounded specialist tasks. The reviews
 
 [orchestrator.md](.claude/agents/orchestrator.md) defines task packets, file ownership, model/effort selection, escalation, context discipline, and reporting. `AGENTS.md` and `CLAUDE.md` reference it. Use available runtime controls to select models; the Markdown file itself does not configure or launch agents.
 
-| Agent responsibility | Deliverable | Review gate |
-| --- | --- | --- |
-| Orchestrator | Integrated scope, task dependencies, acceptance scenarios, and final change review. | Resolve conflicting assumptions and keep every change traceable to a requirement. |
-| Systems engineering | Application foundation, identity/authorization, deployment, job handling, and recovery. | Reliable writes, denied unauthorized access, failed-delivery recovery, and restore evidence. |
-| Data engineering | Schema/migrations, integrity rules, approval snapshots, and reporting definitions. | Concurrent numbering/claiming, historical preservation, and stale-decision checks. |
-| Systems analysis | Forms, state transitions, queue behavior, and end-to-end scenarios. | Employee, agent, administrator, and approver journeys pass the pilot. |
-| Business / CEO review | Scope, ownership-cost comparison, priorities, and success criteria. | Sponsor accepts scope, owners, budget, and rollout conditions. |
+| Agent responsibility  | Deliverable                                                                             | Review gate                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Orchestrator          | Integrated scope, task dependencies, acceptance scenarios, and final change review.     | Resolve conflicting assumptions and keep every change traceable to a requirement.            |
+| Systems engineering   | Application foundation, identity/authorization, deployment, job handling, and recovery. | Reliable writes, denied unauthorized access, failed-delivery recovery, and restore evidence. |
+| Data engineering      | Schema/migrations, integrity rules, approval snapshots, and reporting definitions.      | Concurrent numbering/claiming, historical preservation, and stale-decision checks.           |
+| Systems analysis      | Forms, state transitions, queue behavior, and end-to-end scenarios.                     | Employee, agent, administrator, and approver journeys pass the pilot.                        |
+| Business / CEO review | Scope, ownership-cost comparison, priorities, and success criteria.                     | Sponsor accepts scope, owners, budget, and rollout conditions.                               |
 
 Implementation order:
 
@@ -480,7 +480,7 @@ During implementation, assign agents non-overlapping files or clearly bounded ta
 
 ## 21. Product and Engineering Decisions
 
-Decided 9 November 2026 unless marked *proposed*.
+Decided 9 November 2026 unless marked _proposed_.
 
 ### Direction
 
@@ -491,24 +491,24 @@ Decided 9 November 2026 unless marked *proposed*.
 
 ### Technology stack
 
-| Concern | Choice | Reason |
-| --- | --- | --- |
-| Language | TypeScript (strict) everywhere | One language for UI, API, and tests; large hiring pool. |
-| Repository | pnpm workspace monorepo: `apps/api`, `apps/web`, `packages/domain`, `packages/contracts` | Shared types, independent deployables, clear boundaries. |
-| API | Node.js LTS + NestJS (Fastify adapter), OpenAPI generated from contracts | Modular structure, guards for central authorization, documented API for future integrations. |
-| Domain | Plain TypeScript in `packages/domain` (state machines, routing, approval evaluation) | No framework imports; fully unit-testable and portable. |
-| Contracts | Zod schemas shared by API and UI | One source of validation truth. |
-| Database | PostgreSQL 16 + Prisma ORM and Prisma Migrate | Relational integrity, versioned migrations. |
-| Tenant isolation | `tenant_id` on every business table, composite tenant-aware foreign keys, repository scoping, and PostgreSQL RLS with transaction-local context and non-bypass runtime roles | Layered company isolation, verified by negative read/write tests; see section 23. |
-| Ticket numbering | Per-tenant, per-type counter row updated with `UPDATE ... RETURNING` inside the ticket-creation transaction | Unique, gap-tolerant, concurrency-safe numbers per customer. |
-| Web UI | React + Vite + TypeScript, React Router, TanStack Query, accessible component library (e.g. Radix-based), i18n library from day one | Replaceable SPA, accessible, translatable for future customers. |
-| Jobs | Transactional application outbox dispatched to pg-boss (PostgreSQL-backed queue) | Durable event capture with retryable post-commit delivery; no cross-library transaction assumption. |
-| Files | S3-compatible object storage API (RustFS for local development), ClamAV scanner as a separate service | Works on any cloud or own server. MinIO's planned container images could not be pulled from Docker Hub or Quay on 10 November 2026; RustFS provides the same S3 boundary under Apache-2.0. |
-| Email | SMTP adapter (Mailpit locally) | Provider-neutral. |
-| Auth | Server sessions in httpOnly Secure cookies, Argon2id hashing, CSRF protection, login rate limiting, TOTP MFA (required for administrators) | Secure built-in login; SSO later. |
-| Testing | Vitest (unit/integration against real PostgreSQL), Playwright (end-to-end), axe (accessibility) | Acceptance checklist becomes automated tests. |
-| Quality gates | ESLint, Prettier, type check, tests, dependency vulnerability audit, and dependency licence check in CI (GitHub Actions proposed) | Production readiness and sellable licensing. |
-| Logging | Structured JSON logs (pino) with request IDs; no ticket contents or secrets | Operable without leaking customer data. |
+| Concern          | Choice                                                                                                                                                                       | Reason                                                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Language         | TypeScript (strict) everywhere                                                                                                                                               | One language for UI, API, and tests; large hiring pool.                                                                                                                                    |
+| Repository       | pnpm workspace monorepo: `apps/api`, `apps/web`, `packages/domain`, `packages/contracts`                                                                                     | Shared types, independent deployables, clear boundaries.                                                                                                                                   |
+| API              | Node.js LTS + NestJS (Fastify adapter), OpenAPI generated from contracts                                                                                                     | Modular structure, guards for central authorization, documented API for future integrations.                                                                                               |
+| Domain           | Plain TypeScript in `packages/domain` (state machines, routing, approval evaluation)                                                                                         | No framework imports; fully unit-testable and portable.                                                                                                                                    |
+| Contracts        | Zod schemas shared by API and UI                                                                                                                                             | One source of validation truth.                                                                                                                                                            |
+| Database         | PostgreSQL 16 + Prisma ORM and Prisma Migrate                                                                                                                                | Relational integrity, versioned migrations.                                                                                                                                                |
+| Tenant isolation | `tenant_id` on every business table, composite tenant-aware foreign keys, repository scoping, and PostgreSQL RLS with transaction-local context and non-bypass runtime roles | Layered company isolation, verified by negative read/write tests; see section 23.                                                                                                          |
+| Ticket numbering | Per-tenant, per-type counter row updated with `UPDATE ... RETURNING` inside the ticket-creation transaction                                                                  | Unique, gap-tolerant, concurrency-safe numbers per customer.                                                                                                                               |
+| Web UI           | React + Vite + TypeScript, React Router, TanStack Query, accessible component library (e.g. Radix-based), i18n library from day one                                          | Replaceable SPA, accessible, translatable for future customers.                                                                                                                            |
+| Jobs             | Transactional application outbox dispatched to pg-boss (PostgreSQL-backed queue)                                                                                             | Durable event capture with retryable post-commit delivery; no cross-library transaction assumption.                                                                                        |
+| Files            | S3-compatible object storage API (RustFS for local development), ClamAV scanner as a separate service                                                                        | Works on any cloud or own server. MinIO's planned container images could not be pulled from Docker Hub or Quay on 10 November 2026; RustFS provides the same S3 boundary under Apache-2.0. |
+| Email            | SMTP adapter (Mailpit locally)                                                                                                                                               | Provider-neutral.                                                                                                                                                                          |
+| Auth             | Server sessions in httpOnly Secure cookies, Argon2id hashing, CSRF protection, login rate limiting, TOTP MFA (required for administrators)                                   | Secure built-in login; SSO later.                                                                                                                                                          |
+| Testing          | Vitest (unit/integration against real PostgreSQL), Playwright (end-to-end), axe (accessibility)                                                                              | Acceptance checklist becomes automated tests.                                                                                                                                              |
+| Quality gates    | ESLint, Prettier, type check, tests, dependency vulnerability audit, and dependency licence check in CI (GitHub Actions proposed)                                            | Production readiness and sellable licensing.                                                                                                                                               |
+| Logging          | Structured JSON logs (pino) with request IDs; no ticket contents or secrets                                                                                                  | Operable without leaking customer data.                                                                                                                                                    |
 
 ### Commercial-readiness rules
 
@@ -524,38 +524,38 @@ Specialist role briefs are defined in `.claude/agents/`; shared engineering conv
 
 ## 22. Gap Resolutions — Proposed Defaults
 
-Each item below fills a gap found in the review. All are *proposed* and should be confirmed by the business sponsor; agents implement them as configurable where noted.
+Each item below fills a gap found in the review. All are _proposed_ and should be confirmed by the business sponsor; agents implement them as configurable where noted.
 
-| # | Gap | Proposed default |
-| --- | --- | --- |
-| 1 | Default priority/severity on new tickets | Incidents start at P3/S3, service requests at P4, and are flagged **Untriaged** until an agent confirms them. Untriaged tickets are highlighted in queues. |
-| 2 | Customer replies on held or resolved tickets | A customer message on a ticket held for "Awaiting customer" returns it to its previous active state and notifies the assignee. On a Resolved ticket the customer sees **Confirm fixed** (→ Complete) and **Still a problem** (→ In Progress, counts as a reopen). |
-| 3 | Automatic closure and reopening | Resolved tickets auto-complete after 5 business days (tenant setting). Completed tickets do not reopen; the employee raises a new ticket linked to the old one. |
-| 4 | Employee changes after submission | Employees can cancel their own tickets while Open or Pending Approval. Customer messages/attachments are allowed in Open, Pending Approval, In Progress, On Hold, and Resolved where applicable to the ticket type; Complete, Cancelled, and Rejected are read-only to customers. Classification fields are agent-only after submission. |
-| 5 | Approver absence and overdue approvals | Approvers can nominate an active, eligible same-tenant delegate for a dated period. Check validity, original authority, and self-approval restrictions when recording the decision; reject delegation chains/cycles. Record original approver and acting delegate. Reminder after 2 business days pending; escalation to the queue owner and administrator after 5 (tenant settings). |
-| 6 | VP and manager edge cases | One VP per tenant by default, optionally per department. If the requested-for user's manager is the VP, one VP decision satisfies both stages. Self-approval routes to the configured alternate. |
-| 7 | Loading users | Administrator CSV import with validation preview, plus manual add. Users receive an invitation email with a time-limited set-password link. The first administrator is created by a provisioning command. |
-| 8 | Requests with several items | One catalog item per service request initially (quantity allowed). Multi-item carts are a later improvement. |
-| 9 | Accessibility and browsers | WCAG 2.2 AA. Latest two versions of Chrome, Edge, Firefox, and Safari; responsive down to 360 px width. No native mobile app. |
-| 10 | Language and time | English at launch, all UI text externalised for translation. UTC storage, tenant timezone display. |
-| 11 | Session and password policy | Idle timeout 30 minutes for staff roles, 8 hours for employees; absolute session limit 12 hours. Minimum 12-character passwords, breached-password check where available, progressive lockout after repeated failures, MFA required for administrators and optional for others. |
-| 12 | Watchers / CC | Not in the initial release. |
-| 13 | Export | CSV export of list views for agents and administrators in phase 4, limited to records the user may see, and audited. |
-| 14 | Retention and privacy law | Configurable retention per record class; defaults set once the applicable data-protection law is confirmed (decision 10). Until then nothing is auto-deleted. |
-| 15 | Engineering conventions, testing, CI | Defined in `CLAUDE.md`: repository layout, coding standards, test strategy, seed data, and definition of done. |
-| 16 | Multi-company use | Covered by tenant isolation in section 21. The first company is tenant one; there is no cross-tenant UI in the initial release. |
+| #   | Gap                                          | Proposed default                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Default priority/severity on new tickets     | Incidents start at P3/S3, service requests at P4, and are flagged **Untriaged** until an agent confirms them. Untriaged tickets are highlighted in queues.                                                                                                                                                                                                                            |
+| 2   | Customer replies on held or resolved tickets | A customer message on a ticket held for "Awaiting customer" returns it to its previous active state and notifies the assignee. On a Resolved ticket the customer sees **Confirm fixed** (→ Complete) and **Still a problem** (→ In Progress, counts as a reopen).                                                                                                                     |
+| 3   | Automatic closure and reopening              | Resolved tickets auto-complete after 5 business days (tenant setting). Completed tickets do not reopen; the employee raises a new ticket linked to the old one.                                                                                                                                                                                                                       |
+| 4   | Employee changes after submission            | Employees can cancel their own tickets while Open or Pending Approval. Customer messages/attachments are allowed in Open, Pending Approval, In Progress, On Hold, and Resolved where applicable to the ticket type; Complete, Cancelled, and Rejected are read-only to customers. Classification fields are agent-only after submission.                                              |
+| 5   | Approver absence and overdue approvals       | Approvers can nominate an active, eligible same-tenant delegate for a dated period. Check validity, original authority, and self-approval restrictions when recording the decision; reject delegation chains/cycles. Record original approver and acting delegate. Reminder after 2 business days pending; escalation to the queue owner and administrator after 5 (tenant settings). |
+| 6   | VP and manager edge cases                    | One VP per tenant by default, optionally per department. If the requested-for user's manager is the VP, one VP decision satisfies both stages. Self-approval routes to the configured alternate.                                                                                                                                                                                      |
+| 7   | Loading users                                | Administrator CSV import with validation preview, plus manual add. Users receive an invitation email with a time-limited set-password link. The first administrator is created by a provisioning command.                                                                                                                                                                             |
+| 8   | Requests with several items                  | One catalog item per service request initially (quantity allowed). Multi-item carts are a later improvement.                                                                                                                                                                                                                                                                          |
+| 9   | Accessibility and browsers                   | WCAG 2.2 AA. Latest two versions of Chrome, Edge, Firefox, and Safari; responsive down to 360 px width. No native mobile app.                                                                                                                                                                                                                                                         |
+| 10  | Language and time                            | English at launch, all UI text externalised for translation. UTC storage, tenant timezone display.                                                                                                                                                                                                                                                                                    |
+| 11  | Session and password policy                  | Idle timeout 30 minutes for staff roles, 8 hours for employees; absolute session limit 12 hours. Minimum 12-character passwords, breached-password check where available, progressive lockout after repeated failures, MFA required for administrators and optional for others.                                                                                                       |
+| 12  | Watchers / CC                                | Not in the initial release.                                                                                                                                                                                                                                                                                                                                                           |
+| 13  | Export                                       | CSV export of list views for agents and administrators in phase 4, limited to records the user may see, and audited.                                                                                                                                                                                                                                                                  |
+| 14  | Retention and privacy law                    | Configurable retention per record class; defaults set once the applicable data-protection law is confirmed (decision 10). Until then nothing is auto-deleted.                                                                                                                                                                                                                         |
+| 15  | Engineering conventions, testing, CI         | Defined in `CLAUDE.md`: repository layout, coding standards, test strategy, seed data, and definition of done.                                                                                                                                                                                                                                                                        |
+| 16  | Multi-company use                            | Covered by tenant isolation in section 21. The first company is tenant one; there is no cross-tenant UI in the initial release.                                                                                                                                                                                                                                                       |
 
 ## 23. Review Corrections and Implementation Gates
 
 Recorded 10 November 2026. These five corrections reconcile the reviewed design. Business timing defaults in section 22 remain proposed; the technical isolation and consistency rules below are required for implementation.
 
-| Review point | Resolution | Evidence required before completion |
-| --- | --- | --- |
-| 1. Tenant-safe relationships and numbering | Composite foreign keys include tenant for tenant-owned references; counters and unique keys are per tenant/type. Idempotency keys include tenant, actor, operation, and request fingerprint. | Two tenants can each create `INC0001`; cross-tenant inserts/updates fail; concurrent retries create one result; reused keys cannot disclose another actor's result. |
-| 2. RLS execution | API/worker business queries establish transaction-local tenant context on the same database connection. Runtime roles are non-owner, non-superuser, and have no BYPASSRLS; migrations use a separate role. Missing context denies access. | Missing-context, cross-tenant read/write, pooled-connection reuse, and background-job tests run using actual runtime roles. |
-| 3. Atomic notifications | Persist an application outbox event in the Prisma business transaction, then publish committed events to pg-boss. Track event identity and publication/delivery state; retry without repeating business actions. | Rollback emits no event; crashes before enqueue and after enqueue/before marking published eventually deliver without losing the event; duplicate jobs do not repeat business actions. |
-| 4. Architecture alignment | PostgreSQL 16, built-in login, React web and NestJS API deployables are selected. The worker shares backend code; SSO is later. Sections 17, 18, 20, and 21 now agree. | Scaffolding and configuration follow the recorded stack; no external identity provider is required for the first working slice. |
-| 5. Terminal states and delegation | Complete, Cancelled, and Rejected forbid new customer messages/uploads. Delegates must be active, eligible, same-tenant, within the approved period, and unable to self-approve or chain delegation. | Server-side state/role tests cover allowed and denied communications, stale decisions, expiry, cross-tenant delegation, self-approval, and cycles. |
+| Review point                               | Resolution                                                                                                                                                                                                                                | Evidence required before completion                                                                                                                                                    |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Tenant-safe relationships and numbering | Composite foreign keys include tenant for tenant-owned references; counters and unique keys are per tenant/type. Idempotency keys include tenant, actor, operation, and request fingerprint.                                              | Two tenants can each create `INC0001`; cross-tenant inserts/updates fail; concurrent retries create one result; reused keys cannot disclose another actor's result.                    |
+| 2. RLS execution                           | API/worker business queries establish transaction-local tenant context on the same database connection. Runtime roles are non-owner, non-superuser, and have no BYPASSRLS; migrations use a separate role. Missing context denies access. | Missing-context, cross-tenant read/write, pooled-connection reuse, and background-job tests run using actual runtime roles.                                                            |
+| 3. Atomic notifications                    | Persist an application outbox event in the Prisma business transaction, then publish committed events to pg-boss. Track event identity and publication/delivery state; retry without repeating business actions.                          | Rollback emits no event; crashes before enqueue and after enqueue/before marking published eventually deliver without losing the event; duplicate jobs do not repeat business actions. |
+| 4. Architecture alignment                  | PostgreSQL 16, built-in login, React web and NestJS API deployables are selected. The worker shares backend code; SSO is later. Sections 17, 18, 20, and 21 now agree.                                                                    | Scaffolding and configuration follow the recorded stack; no external identity provider is required for the first working slice.                                                        |
+| 5. Terminal states and delegation          | Complete, Cancelled, and Rejected forbid new customer messages/uploads. Delegates must be active, eligible, same-tenant, within the approved period, and unable to self-approve or chain delegation.                                      | Server-side state/role tests cover allowed and denied communications, stale decisions, expiry, cross-tenant delegation, self-approval, and cycles.                                     |
 
 ### RLS and worker boundaries
 

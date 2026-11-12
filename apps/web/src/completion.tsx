@@ -27,15 +27,24 @@ export function ErrorNotice({ error }: { error: Error | null }) {
   const { t } = useTranslation();
   return error ? (
     <p className="error" role="alert">
-      {error instanceof ApiError && error.status === 409
-        ? t("conflict")
-        : error.message}
+      {error instanceof ApiError && error.status === 409 ? t("conflict") : error.message}
     </p>
   ) : null;
 }
 export function ChannelField() {
   const { t } = useTranslation();
-  return <label>{t("channel")}<select name="channel" defaultValue="Self Service">{["Self Service", "Email", "Phone", "Walk In"].map(channel => <option key={channel} value={channel}>{t(`channels.${channel}`)}</option>)}</select></label>;
+  return (
+    <label>
+      {t("channel")}
+      <select name="channel" defaultValue="Self Service">
+        {["Self Service", "Email", "Phone", "Walk In"].map((channel) => (
+          <option key={channel} value={channel}>
+            {t(`channels.${channel}`)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 export function NewRequest({ session }: { session: SessionView }) {
   const { t } = useTranslation();
@@ -44,12 +53,14 @@ export function NewRequest({ session }: { session: SessionView }) {
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [subcategoryId, setSubcategoryId] = useState("");
-  const classifications = useQuery({ queryKey: ["catalog"], queryFn: () => api<Catalog>("/catalog") });
+  const classifications = useQuery({
+    queryKey: ["catalog"],
+    queryFn: () => api<Catalog>("/catalog"),
+  });
   const key = useRef(crypto.randomUUID());
   const catalog = useQuery({
     queryKey: ["request-catalog"],
-    queryFn: () =>
-      api<{ items: RequestItem[]; users: Person[] }>("/requests/catalog"),
+    queryFn: () => api<{ items: RequestItem[]; users: Person[] }>("/requests/catalog"),
   });
   const item = catalog.data?.items.find((row) => row.id === itemId);
   const create = useMutation({
@@ -109,7 +120,10 @@ export function NewRequest({ session }: { session: SessionView }) {
               <select
                 required
                 value={itemId}
-                onChange={(e) => { setItemId(e.target.value); setSubcategoryId(""); }}
+                onChange={(e) => {
+                  setItemId(e.target.value);
+                  setSubcategoryId("");
+                }}
               >
                 <option value="">{t("chooseItem")}</option>
                 {catalog.data.items.map((row) => (
@@ -119,17 +133,25 @@ export function NewRequest({ session }: { session: SessionView }) {
                 ))}
               </select>
             </label>
-            {catalog.data.items.length === 0 && (
-              <p className="muted">{t("noItems")}</p>
+            {catalog.data.items.length === 0 && <p className="muted">{t("noItems")}</p>}
+            {item && (
+              <label>
+                {t("subcategory")}
+                <select value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)}>
+                  <option value="">{t("noSubcategory")}</option>
+                  {classifications.data?.categories
+                    .find((category) => category.id === item.categoryId)
+                    ?.subcategories.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
             )}
-            {item && <label>{t("subcategory")}<select value={subcategoryId} onChange={e => setSubcategoryId(e.target.value)}><option value="">{t("noSubcategory")}</option>{classifications.data?.categories.find(category => category.id === item.categoryId)?.subcategories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>}
             <label>
               {t("requestedFor")}
-              <select
-                required
-                name="requestedForId"
-                defaultValue={session.user.id}
-              >
+              <select required name="requestedForId" defaultValue={session.user.id}>
                 {catalog.data.users.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name}
@@ -150,15 +172,19 @@ export function NewRequest({ session }: { session: SessionView }) {
             </label>
             {item && (
               <div className="request-cost" role="status">
-                <strong>
-                  {money(item.unitCostMinor * quantity, item.currency)}
-                </strong>
-                <span>{t(item.recurringPeriod === "month" ? "monthly" : item.recurringPeriod === "year" ? "annual" : "oneTime")}</span>
+                <strong>{money(item.unitCostMinor * quantity, item.currency)}</strong>
+                <span>
+                  {t(
+                    item.recurringPeriod === "month"
+                      ? "monthly"
+                      : item.recurringPeriod === "year"
+                        ? "annual"
+                        : "oneTime",
+                  )}
+                </span>
                 <p>
                   {t(
-                    item.requiresManager ||
-                      item.requiresVp ||
-                      item.vpThresholdMinor !== null
+                    item.requiresManager || item.requiresVp || item.vpThresholdMinor !== null
                       ? "approvalRequired"
                       : "approvalNotRequired",
                   )}
@@ -171,13 +197,7 @@ export function NewRequest({ session }: { session: SessionView }) {
             </label>
             <label>
               {t("requestDescription")}
-              <textarea
-                name="description"
-                required
-                minLength={10}
-                maxLength={5000}
-                rows={4}
-              />
+              <textarea name="description" required minLength={10} maxLength={5000} rows={4} />
             </label>
             <label>
               {t("justification")}
@@ -188,10 +208,7 @@ export function NewRequest({ session }: { session: SessionView }) {
               <Link className="button secondary" to="/tickets">
                 {t("cancel")}
               </Link>
-              <button
-                className="button primary"
-                disabled={create.isPending || !item}
-              >
+              <button className="button primary" disabled={create.isPending || !item}>
                 {t(create.isPending ? "submitting" : "submitRequest")}
               </button>
             </div>
@@ -297,12 +314,22 @@ export function Approvals({ session }: { session: SessionView }) {
             <p className="muted">
               {t("requestedFor")}: {row.requestedForName}
             </p>
-            <p className="muted">{t("reportedBy")}: {row.callerName} · {row.itemName}</p>
-            {row.createdAt && <p className="field-hint">{t("requestedAt", { date: displayDate(row.createdAt) })} · {t("waitingHours", { count: Math.max(0, Math.floor((Date.now() - Date.parse(row.createdAt)) / 3600000)) })}</p>}
-            {row.justification && <p className="preserve-text">{row.justification}</p>}
-            <p className="approval-total">
-              {money(row.totalCostMinor, row.currency)}
+            <p className="muted">
+              {t("reportedBy")}: {row.callerName} · {row.itemName}
             </p>
+            {row.createdAt && (
+              <p className="field-hint">
+                {t("requestedAt", { date: displayDate(row.createdAt) })} ·{" "}
+                {t("waitingHours", {
+                  count: Math.max(
+                    0,
+                    Math.floor((Date.now() - Date.parse(row.createdAt)) / 3600000),
+                  ),
+                })}
+              </p>
+            )}
+            {row.justification && <p className="preserve-text">{row.justification}</p>}
+            <p className="approval-total">{money(row.totalCostMinor, row.currency)}</p>
             <button
               className="button secondary"
               onClick={() => {
@@ -319,9 +346,8 @@ export function Approvals({ session }: { session: SessionView }) {
                   event.preventDefault();
                   const form = new FormData(event.currentTarget);
                   const decision =
-                    (event.nativeEvent as SubmitEvent).submitter?.getAttribute(
-                      "value",
-                    ) || "Approved";
+                    (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ||
+                    "Approved";
                   const comment = String(form.get("comment")).trim();
                   if (decision === "Rejected" && !comment) {
                     const input = event.currentTarget.elements.namedItem(
@@ -356,18 +382,10 @@ export function Approvals({ session }: { session: SessionView }) {
                   >
                     {t("cancel")}
                   </button>
-                  <button
-                    className="button secondary"
-                    value="Rejected"
-                    disabled={decide.isPending}
-                  >
+                  <button className="button secondary" value="Rejected" disabled={decide.isPending}>
                     {t("reject")}
                   </button>
-                  <button
-                    className="button primary"
-                    value="Approved"
-                    disabled={decide.isPending}
-                  >
+                  <button className="button primary" value="Approved" disabled={decide.isPending}>
                     {t("approve")}
                   </button>
                 </div>
@@ -399,11 +417,7 @@ function Delegations({ session }: { session: SessionView }) {
   });
   const save = useMutation({
     mutationFn: ({ path, body }: { path: string; body: object }) =>
-      api(
-        path,
-        { method: "POST", body: JSON.stringify(body) },
-        session.csrfToken,
-      ),
+      api(path, { method: "POST", body: JSON.stringify(body) }, session.csrfToken),
     onSuccess: () => cache.invalidateQueries({ queryKey: ["delegations"] }),
   });
   return (
@@ -457,12 +471,10 @@ function Delegations({ session }: { session: SessionView }) {
           {data.data.delegations.map((row) => (
             <div className="config-record" key={row.id}>
               <strong>
-                {data.data.users.find((u) => u.id === row.delegateId)?.name ||
-                  t("delegate")}
+                {data.data.users.find((u) => u.id === row.delegateId)?.name || t("delegate")}
               </strong>
               <p>
-                {displayDate(row.startsAt)} –{" "}
-                {displayDate(row.endsAt)}
+                {displayDate(row.startsAt)} – {displayDate(row.endsAt)}
               </p>
               <button
                 className="text-button"
@@ -497,9 +509,7 @@ export function RequestInformation({ ticket }: { ticket: TicketDetail }) {
         <div>
           <dt>{t("requestedFor")}</dt>
           <dd>
-            <Link to={`/users/${ticket.requestedForId}`}>
-              {ticket.requestedForName}
-            </Link>
+            <Link to={`/users/${ticket.requestedForId}`}>{ticket.requestedForName}</Link>
           </dd>
         </div>
         <div>
@@ -515,9 +525,7 @@ export function RequestInformation({ ticket }: { ticket: TicketDetail }) {
           </dd>
         </div>
       </dl>
-      {ticket.justification && (
-        <p className="preserve-text">{ticket.justification}</p>
-      )}
+      {ticket.justification && <p className="preserve-text">{ticket.justification}</p>}
       {ticket.approvalCorrectionReason && (
         <p className="error">{ticket.approvalCorrectionReason}</p>
       )}
@@ -530,9 +538,7 @@ export function RequestInformation({ ticket }: { ticket: TicketDetail }) {
             <li key={row.id}>
               <strong>{t(`approvalStage.${row.stage}`)}</strong> ·{" "}
               {row.approverName || t("missingApprover")}{" "}
-              <span className="status">
-                {t(`approvalStatus.${row.status}`)}
-              </span>
+              <span className="status">{t(`approvalStatus.${row.status}`)}</span>
               {row.decidedByName && (
                 <p>
                   {t("decidedBy")}: {row.decidedByName}{" "}
@@ -623,10 +629,38 @@ export function Reports({ session }: { session: SessionView }) {
               <strong>{report.data.total}</strong>
             </div>
           </div>
-          {report.data.limitReached && (
-            <p className="field-hint">{t("resultsLimit")}</p>
-          )}
-          <section className="form-panel report-measures"><h2>{t("deliveryMeasures")}</h2><p className="field-hint">{t("calendarHoursHint")}</p><div className="table-scroll"><table><tbody>{(["openCount", "oldestOpenDays", "pendingApprovalCount", "oldestApprovalHours", "medianFirstResponseHours", "medianResolutionHours"] as const).map(key => <tr key={key}><th scope="row">{t(`reportMeasures.${key}`)}</th><td>{report.data[key] === null || report.data[key] === undefined ? "—" : new Intl.NumberFormat(session.tenant.locale || "en", { maximumFractionDigits: 1 }).format(report.data[key])}</td></tr>)}</tbody></table></div></section>
+          {report.data.limitReached && <p className="field-hint">{t("resultsLimit")}</p>}
+          <section className="form-panel report-measures">
+            <h2>{t("deliveryMeasures")}</h2>
+            <p className="field-hint">{t("calendarHoursHint")}</p>
+            <div className="table-scroll">
+              <table>
+                <tbody>
+                  {(
+                    [
+                      "openCount",
+                      "oldestOpenDays",
+                      "pendingApprovalCount",
+                      "oldestApprovalHours",
+                      "medianFirstResponseHours",
+                      "medianResolutionHours",
+                    ] as const
+                  ).map((key) => (
+                    <tr key={key}>
+                      <th scope="row">{t(`reportMeasures.${key}`)}</th>
+                      <td>
+                        {report.data[key] === null || report.data[key] === undefined
+                          ? "—"
+                          : new Intl.NumberFormat(session.tenant.locale || "en", {
+                              maximumFractionDigits: 1,
+                            }).format(report.data[key])}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
           <div className="report-grid">
             <section className="form-panel">
               <h2>{t("status")}</h2>
@@ -682,13 +716,7 @@ function Knowledge() {
       >
         <label>
           {t("knowledgeSearch")}
-          <input
-            name="search"
-            required
-            minLength={2}
-            maxLength={160}
-            type="search"
-          />
+          <input name="search" required minLength={2} maxLength={160} type="search" />
         </label>
         <button className="button secondary">{t("search")}</button>
       </form>
@@ -723,22 +751,13 @@ export function ApprovalCorrections({ session }: { session: SessionView }) {
       }>("/admin/approval-corrections"),
   });
   const correct = useMutation({
-    mutationFn: ({
-      id,
-      revision,
-      reason,
-    }: {
-      id: string;
-      revision: number;
-      reason: string;
-    }) =>
+    mutationFn: ({ id, revision, reason }: { id: string; revision: number; reason: string }) =>
       api(
         `/requests/${id}/correct-approvals`,
         { method: "POST", body: JSON.stringify({ revision, reason }) },
         session.csrfToken,
       ),
-    onSuccess: () =>
-      cache.invalidateQueries({ queryKey: ["approval-corrections"] }),
+    onSuccess: () => cache.invalidateQueries({ queryKey: ["approval-corrections"] }),
   });
   return (
     <section className="form-panel">

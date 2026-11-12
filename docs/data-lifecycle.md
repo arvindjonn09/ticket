@@ -43,5 +43,3 @@ pnpm --filter @astrama/api exec vitest run test/data-lifecycle.integration.test.
 ```
 
 The check creates fresh random test tenants only. It verifies MFA and cross-tenant denial, runtime owner-operation denial, policy limits through scanned HTTP uploads, secret-free exports and manifest hashes, disabled/held retention, preview without mutation, actual terminal aggregate retention, and a real S3 deletion failure followed by a safe retry with foreign objects preserved. It never deletes the existing harbour/northstar tenants.
-
-

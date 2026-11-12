@@ -84,9 +84,7 @@ export function AuthenticatorSetup({ session }: { session: SessionView }) {
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                verify.mutate(
-                  String(new FormData(event.currentTarget).get("code")),
-                );
+                verify.mutate(String(new FormData(event.currentTarget).get("code")));
               }}
             >
               <label>
@@ -155,9 +153,7 @@ function ConfigForm({
   });
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute(
-      "value",
-    );
+    const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
     const form = event.currentTarget;
     const remove = action === "delete";
     const body = remove
@@ -208,12 +204,7 @@ function ConfigForm({
         {confirmDelete && (
           <div className="delete-confirm">
             <p>{t("deleteConfirm")}</p>
-            <button
-              className="button secondary"
-              name="action"
-              value="delete"
-              formNoValidate
-            >
+            <button className="button secondary" name="action" value="delete" formNoValidate>
               {t("confirmDelete")}
             </button>{" "}
             <button
@@ -278,12 +269,7 @@ function GroupForm({
     >
       <label>
         {t("groupName")}
-        <input
-          name="name"
-          required
-          maxLength={100}
-          defaultValue={group?.name}
-        />
+        <input name="name" required maxLength={100} defaultValue={group?.name} />
       </label>
       <fieldset className="member-options">
         <legend>{t("groupMembers")}</legend>
@@ -331,13 +317,7 @@ function GroupForm({
     </ConfigForm>
   );
 }
-function GroupOptions({
-  config,
-  selectedId,
-}: {
-  config: AdminConfig;
-  selectedId?: string | null;
-}) {
+function GroupOptions({ config, selectedId }: { config: AdminConfig; selectedId?: string | null }) {
   const { t } = useTranslation();
   return (
     <>
@@ -369,11 +349,7 @@ function CategoryForm({
       session={session}
       path="categories"
       record={category}
-      title={
-        category
-          ? t("editCategory", { name: category.name })
-          : t("createCategory")
-      }
+      title={category ? t("editCategory", { name: category.name }) : t("createCategory")}
       deletable
       onSaved={onSaved}
       values={(form) => ({
@@ -386,30 +362,17 @@ function CategoryForm({
     >
       <label>
         {t("categoryName")}
-        <input
-          name="name"
-          required
-          maxLength={100}
-          defaultValue={category?.name}
-        />
+        <input name="name" required maxLength={100} defaultValue={category?.name} />
       </label>
       <label>
         {t("supportGroup")}
-        <select
-          name="departmentId"
-          required
-          defaultValue={category?.departmentId || ""}
-        >
+        <select name="departmentId" required defaultValue={category?.departmentId || ""}>
           <option value="">{t("chooseGroup")}</option>
           <GroupOptions config={config} selectedId={category?.departmentId} />
         </select>
       </label>
       <label className="checkbox-label">
-        <input
-          type="checkbox"
-          name="sensitive"
-          defaultChecked={category?.sensitive}
-        />
+        <input type="checkbox" name="sensitive" defaultChecked={category?.sensitive} />
         {t("sensitiveCategory")}
       </label>
       <p className="field-hint">{t("sensitiveHint")}</p>
@@ -450,9 +413,7 @@ function SubcategoryForm({
       path="subcategories"
       record={subcategory}
       title={
-        subcategory
-          ? t("editSubcategory", { name: subcategory.name })
-          : t("createSubcategory")
+        subcategory ? t("editSubcategory", { name: subcategory.name }) : t("createSubcategory")
       }
       deletable
       onSaved={onSaved}
@@ -465,11 +426,7 @@ function SubcategoryForm({
       {subcategory ? (
         <p className="field-hint">
           {t("parentCategory")}:{" "}
-          {
-            config.categories.find(
-              (category) => category.id === subcategory.categoryId,
-            )?.name
-          }
+          {config.categories.find((category) => category.id === subcategory.categoryId)?.name}
         </p>
       ) : (
         <label>
@@ -488,24 +445,13 @@ function SubcategoryForm({
       )}
       <label>
         {t("subcategoryName")}
-        <input
-          name="name"
-          required
-          maxLength={100}
-          defaultValue={subcategory?.name}
-        />
+        <input name="name" required maxLength={100} defaultValue={subcategory?.name} />
       </label>
       <label>
         {t("routingGroup")}
-        <select
-          name="departmentId"
-          defaultValue={subcategory?.departmentId || ""}
-        >
+        <select name="departmentId" defaultValue={subcategory?.departmentId || ""}>
           <option value="">{t("inheritGroup")}</option>
-          <GroupOptions
-            config={config}
-            selectedId={subcategory?.departmentId}
-          />
+          <GroupOptions config={config} selectedId={subcategory?.departmentId} />
         </select>
       </label>
     </ConfigForm>
@@ -515,9 +461,7 @@ function RoutingPreview({ config }: { config: AdminConfig }) {
   const { t } = useTranslation();
   const [categoryId, setCategoryId] = useState("");
   const [subcategoryId, setSubcategoryId] = useState("");
-  const category = config.categories.find(
-    (item) => item.id === categoryId && item.active,
-  );
+  const category = config.categories.find((item) => item.id === categoryId && item.active);
   const children = config.subcategories.filter(
     (item) => item.categoryId === category?.id && item.active,
   );
@@ -637,8 +581,12 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
             </p>
           )}
           <div id="organisation-panels">
-            <div hidden={section !== "automation"}><AutomationPanel session={session} /></div>
-            <div hidden={section !== "data-policy"}><DataPolicyPanel session={session} /></div>
+            <div hidden={section !== "automation"}>
+              <AutomationPanel session={session} />
+            </div>
+            <div hidden={section !== "data-policy"}>
+              <DataPolicyPanel session={session} />
+            </div>
             {section === "operations" && <OperationsPanel />}
             <div hidden={section !== "users"}>
               <UsersPanel session={session} />
@@ -662,22 +610,26 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
             >
               <h2>{t("supportGroups")}</h2>
               <p className="muted">{t("groupsIntro")}</p>
-              {config.data.groups.some(group => group.active && (!group.queueOwnerId || !group.substituteId)) && <p className="field-hint" role="status">{t("queueReadinessWarning", { groups: config.data.groups.filter(group => group.active && (!group.queueOwnerId || !group.substituteId)).map(group => group.name).join(", ") })}</p>}
-              <GroupForm
-                config={config.data}
-                session={session}
-                onSaved={onSaved}
-              />
+              {config.data.groups.some(
+                (group) => group.active && (!group.queueOwnerId || !group.substituteId),
+              ) && (
+                <p className="field-hint" role="status">
+                  {t("queueReadinessWarning", {
+                    groups: config.data.groups
+                      .filter(
+                        (group) => group.active && (!group.queueOwnerId || !group.substituteId),
+                      )
+                      .map((group) => group.name)
+                      .join(", "),
+                  })}
+                </p>
+              )}
+              <GroupForm config={config.data} session={session} onSaved={onSaved} />
               {config.data.groups.map((group) => (
-                <details
-                  className="config-record"
-                  key={`${group.id}-${group.revision}`}
-                >
+                <details className="config-record" key={`${group.id}-${group.revision}`}>
                   <summary>
                     {group.name}{" "}
-                    <span className="config-state">
-                      {t(group.active ? "active" : "archived")}
-                    </span>
+                    <span className="config-state">{t(group.active ? "active" : "archived")}</span>
                   </summary>
                   <GroupForm
                     config={config.data}
@@ -694,16 +646,9 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
               aria-label={t("categories")}
             >
               <h2>{t("categories")}</h2>
-              <CategoryForm
-                config={config.data}
-                session={session}
-                onSaved={onSaved}
-              />
+              <CategoryForm config={config.data} session={session} onSaved={onSaved} />
               {config.data.categories.map((category) => (
-                <details
-                  className="config-record"
-                  key={`${category.id}-${category.revision}`}
-                >
+                <details className="config-record" key={`${category.id}-${category.revision}`}>
                   <summary>
                     {category.name}{" "}
                     <span className="config-state">
@@ -725,11 +670,7 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
               aria-label={t("subcategories")}
             >
               <h2>{t("subcategories")}</h2>
-              <SubcategoryForm
-                config={config.data}
-                session={session}
-                onSaved={onSaved}
-              />
+              <SubcategoryForm config={config.data} session={session} onSaved={onSaved} />
               {config.data.subcategories.map((subcategory) => (
                 <details
                   className="config-record"

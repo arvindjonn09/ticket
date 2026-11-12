@@ -1,8 +1,4 @@
-export type {
-  SessionView,
-  TicketSummary,
-  TicketDetail,
-} from "@astrama/contracts";
+export type { SessionView, TicketSummary, TicketDetail } from "@astrama/contracts";
 
 export type Catalog = {
   categories: {

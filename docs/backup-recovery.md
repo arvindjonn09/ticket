@@ -20,13 +20,13 @@ node scripts/backup-stack.mjs backup --verify
 
 Each generated backup directory retains only encrypted files:
 
-| File | Contents |
-| --- | --- |
-| `database.dump.enc` | PostgreSQL custom-format dump, including schema, policies, grants and rows |
-| `storage.tar.enc` | Complete RustFS data volume, including object and bucket metadata |
-| `secrets.json.enc` | Application MFA key and private storage credentials |
-| `manifest.json.enc` | Authenticated SHA-256 hashes of the three artifacts, source image IDs, table counts, object byte hashes and fixture identity |
-| `verification.json.enc` | Completion time and non-content verification totals, written only after successful full restore |
+| File                    | Contents                                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `database.dump.enc`     | PostgreSQL custom-format dump, including schema, policies, grants and rows                                                   |
+| `storage.tar.enc`       | Complete RustFS data volume, including object and bucket metadata                                                            |
+| `secrets.json.enc`      | Application MFA key and private storage credentials                                                                          |
+| `manifest.json.enc`     | Authenticated SHA-256 hashes of the three artifacts, source image IDs, table counts, object byte hashes and fixture identity |
+| `verification.json.enc` | Completion time and non-content verification totals, written only after successful full restore                              |
 
 Each artifact has a distinct authenticated identity, random 96-bit nonce and 128-bit GCM tag. No plaintext dump, archive, secret file or manifest is staged on the host. Failed captures may retain an incomplete encrypted directory; a missing authenticated manifest or verification file identifies an incomplete operation. There is no automatic retention deletion or external upload. Copy completed encrypted artifacts and archive the exact released API/PostgreSQL/RustFS images separately under your agreed offsite and retention policy. Verification uses captured immutable image IDs; a replacement host needs those images loaded first. Offsite credentials, image distribution, storage and customer retention periods are deployment inputs.
 

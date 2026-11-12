@@ -25,9 +25,9 @@ import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import { canMessage, isGroupAgent, type Actor } from "@astrama/domain";
-import { AuthRequest, SessionGuard } from "./auth.js";
-import { TicketsService } from "./tickets.js";
-import { readDataPolicy, checkAttachmentPolicy } from "./data-lifecycle.js";
+import { AuthRequest, SessionGuard } from "../auth/auth.service.js";
+import { TicketsService } from "../tickets/tickets.service.js";
+import { readDataPolicy, checkAttachmentPolicy } from "../organisation/data-lifecycle.service.js";
 
 export const maxFileBytes = 5 * 1024 * 1024;
 const metadata = z.object({

@@ -31,7 +31,7 @@ import {
   type TicketDetail,
   type TicketSummary,
 } from "@astrama/contracts";
-import { Database, lockConfiguration, type Tx } from "./database.js";
+import { Database, lockConfiguration, type Tx } from "../../database.js";
 export const ticketInclude = {
   category: true,
   subcategory: true,

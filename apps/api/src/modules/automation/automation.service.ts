@@ -10,9 +10,9 @@ import {
 } from "@nestjs/common";
 import { automationSettingsSchema, type AutomationSettingsView } from "@astrama/contracts";
 import { canConfigureOrganisation, elapsedBusinessDays, type Actor } from "@astrama/domain";
-import { SessionGuard, type AuthContext, type AuthRequest } from "./auth.js";
-import { Database, lockConfiguration, type Tx } from "./database.js";
-import { TicketsService } from "./tickets.js";
+import { SessionGuard, type AuthContext, type AuthRequest } from "../auth/auth.service.js";
+import { Database, lockConfiguration, type Tx } from "../../database.js";
+import { TicketsService } from "../tickets/tickets.service.js";
 
 type SettingsRow = {
   enabled: boolean;

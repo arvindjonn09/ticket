@@ -2,9 +2,9 @@ import { Controller, ForbiddenException, Get, Param, Req, Res, UseGuards } from 
 import type { FastifyReply } from "fastify";
 import { canReadTicket, isGroupAgent, terminalStates } from "@astrama/domain";
 import { z } from "zod";
-import { AuthRequest, SessionGuard } from "./auth.js";
-import { Database } from "./database.js";
-import { TicketsService } from "./tickets.js";
+import { AuthRequest, SessionGuard } from "../auth/auth.service.js";
+import { Database } from "../../database.js";
+import { TicketsService } from "../tickets/tickets.service.js";
 
 export function csvCell(value: string | number): string {
   const text = String(value);

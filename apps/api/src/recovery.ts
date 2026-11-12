@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { forgotPasswordSchema, resetPasswordSchema } from "@astrama/contracts";
-import { AuthService, reserveAuthAttempt, tokenHash } from "./auth.js";
+import { AuthService, reserveAuthAttempt, tokenHash } from "./modules/auth/auth.service.js";
 import { Database, lockConfiguration } from "./database.js";
 import { decryptSecret, encryptSecret } from "./mfa.js";
 

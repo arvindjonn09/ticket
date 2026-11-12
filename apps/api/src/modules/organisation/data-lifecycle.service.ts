@@ -11,8 +11,8 @@ import {
 } from "@nestjs/common";
 import { canConfigureOrganisation } from "@astrama/domain";
 import { dataPolicySchema, defaultDataPolicy, type DataPolicy } from "@astrama/contracts";
-import { AuthRequest, type AuthContext, SessionGuard } from "./auth.js";
-import { Database, lockConfiguration, type Tx } from "./database.js";
+import { AuthRequest, type AuthContext, SessionGuard } from "../auth/auth.service.js";
+import { Database, lockConfiguration, type Tx } from "../../database.js";
 
 export async function readDataPolicy(tx: Tx, tenantId: string): Promise<DataPolicy> {
   const [row] = await tx.$queryRaw<

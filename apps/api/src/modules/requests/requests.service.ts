@@ -30,9 +30,9 @@ import {
   revisionSchema,
   updateRequestItemSchema,
 } from "@astrama/contracts";
-import { SessionGuard, type AuthContext, type AuthRequest } from "./auth.js";
-import { type Tx } from "./database.js";
-import { ticketInclude, TicketsService } from "./tickets.js";
+import { SessionGuard, type AuthContext, type AuthRequest } from "../auth/auth.service.js";
+import { type Tx } from "../../database.js";
+import { ticketInclude, TicketsService } from "../tickets/tickets.service.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const itemView = (item: CatalogItem) => ({

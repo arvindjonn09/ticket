@@ -2,9 +2,9 @@ import { Controller, ForbiddenException, Get, Req, UseGuards } from "@nestjs/com
 import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { createConnection } from "node:net";
 import { canConfigureOrganisation } from "@astrama/domain";
-import { SessionGuard, type AuthRequest } from "./auth.js";
+import { SessionGuard, type AuthRequest } from "./modules/auth/auth.service.js";
 import { Database } from "./database.js";
-import { TicketsService } from "./tickets.js";
+import { TicketsService } from "./modules/tickets/tickets.service.js";
 
 export async function operationalHealth(db: Database) {
   const checks: Record<string, boolean> = {

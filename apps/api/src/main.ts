@@ -19,18 +19,32 @@ import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
-import { AuthService, SessionGuard, type AuthRequest } from "./auth.js";
+import { AuthService, SessionGuard, type AuthRequest } from "./modules/auth/auth.service.js";
 import { Database } from "./database.js";
-import { TicketsService } from "./tickets.js";
-import { AdminService } from "./admin.js";
-import { UsersController, PublicInvitationController, UsersService } from "./users.js";
-import { AttachmentsController, AttachmentsService, maxFileBytes } from "./attachments.js";
-import { ReportsController } from "./reports.js";
-import { RequestsController, RequestsService } from "./requests.js";
+import { TicketsService } from "./modules/tickets/tickets.service.js";
+import { AdminService } from "./modules/organisation/admin.service.js";
+import {
+  UsersController,
+  PublicInvitationController,
+  UsersService,
+} from "./modules/users/users.service.js";
+import {
+  AttachmentsController,
+  AttachmentsService,
+  maxFileBytes,
+} from "./modules/attachments/attachments.service.js";
+import { ReportsController } from "./modules/reports/reports.service.js";
+import { RequestsController, RequestsService } from "./modules/requests/requests.service.js";
 import { ContractsController } from "./openapi.js";
 import { RecoveryController, RecoveryService } from "./recovery.js";
-import { AutomationController, AutomationService } from "./automation.js";
-import { DataPolicyController, DataPolicyService } from "./data-lifecycle.js";
+import {
+  AutomationController,
+  AutomationService,
+} from "./modules/automation/automation.service.js";
+import {
+  DataPolicyController,
+  DataPolicyService,
+} from "./modules/organisation/data-lifecycle.service.js";
 import { OperationsController } from "./operations.js";
 
 @Catch()

@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { retentionClasses } from "@astrama/contracts";
 import { lockConfiguration, type Tx } from "./database.js";
-import { readDataPolicy } from "./data-lifecycle.js";
+import { readDataPolicy } from "./modules/organisation/data-lifecycle.service.js";
 
 const requestSchema = z
   .object({

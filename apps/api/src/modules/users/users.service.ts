@@ -39,10 +39,10 @@ import {
   reserveAuthAttempt,
   type AuthContext,
   type AuthRequest,
-} from "./auth.js";
-import { Database, lockConfiguration, type Tx } from "./database.js";
-import { encryptSecret } from "./mfa.js";
-import { TicketsService } from "./tickets.js";
+} from "../auth/auth.service.js";
+import { Database, lockConfiguration, type Tx } from "../../database.js";
+import { encryptSecret } from "../../mfa.js";
+import { TicketsService } from "../tickets/tickets.service.js";
 
 const userView = (user: User): UserProfile => ({
   id: user.id,

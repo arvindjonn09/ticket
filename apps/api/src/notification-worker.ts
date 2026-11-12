@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { Database } from "./database.js";
-import { NotificationWorker } from "./notifications.js";
+import { NotificationWorker } from "./modules/notifications/notifications.service.js";
 
 const worker = new NotificationWorker(new Database());
 await worker.start();

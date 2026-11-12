@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { Database } from "../src/database.js";
-import { TicketsService } from "../src/tickets.js";
-import { RequestsService } from "../src/requests.js";
-import type { AuthContext } from "../src/auth.js";
+import { TicketsService } from "../src/modules/tickets/tickets.service.js";
+import { RequestsService } from "../src/modules/requests/requests.service.js";
+import type { AuthContext } from "../src/modules/auth/auth.service.js";
 import type { CatalogItem, TicketDetail } from "@astrama/contracts";
 
 describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL)(
@@ -85,6 +85,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
               email: "foreign@test.invalid",
               role: "agent",
               passwordHash: "disabled",
+              mfaEnrolled: true,
+              mfaSecret: "test-secret",
               approverEligible: true,
               isVp: true,
             },
@@ -98,6 +100,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
               userId: user.id,
               tokenHash: randomUUID(),
               csrfToken: "test",
+              mfaVerified: true,
               expiresAt: new Date(Date.now() + 3600000),
             },
           });
@@ -144,8 +147,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
                 passwordHash: "disabled",
                 approverEligible: eligible,
                 isVp,
-                mfaEnrolled: role === "admin",
-                mfaSecret: role === "admin" ? "test-secret" : null,
+                mfaEnrolled: ["admin", "agent"].includes(role),
+                mfaSecret: ["admin", "agent"].includes(role) ? "test-secret" : null,
               },
             }),
             tenantId,
@@ -157,7 +160,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
               userId: person.id,
               tokenHash: randomUUID(),
               csrfToken: "test",
-              mfaVerified: role === "admin",
+              mfaVerified: ["admin", "agent"].includes(role),
               expiresAt: new Date(Date.now() + 3600000),
             },
           });
@@ -583,6 +586,24 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       ).rejects.toThrow("not found");
     });
     it("holds resume on customer reply, triage validates priorities, category changes reroute while sensitivity survives transfers", async () => {
+      const transferCandidate = await tickets.create(
+        employee,
+        {
+          categoryId,
+          summary: "Transfer from another department member",
+          description: "An active member outside the owning group can reroute work.",
+        },
+        randomUUID(),
+      );
+      expect((await tickets.get(outsider, transferCandidate.id)).id).toBe(transferCandidate.id);
+      const transferredByOutsider = await tickets.manage(outsider, transferCandidate.id, {
+        revision: transferCandidate.revision,
+        action: "transfer",
+        departmentId: otherGroupId,
+        reason: "The other department owns this request",
+      });
+      expect(transferredByOutsider.departmentId).toBe(otherGroupId);
+
       let ticket = await tickets.create(
         employee,
         {
@@ -790,6 +811,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
           userId: employee.id,
           tokenHash: randomUUID(),
           csrfToken: "test",
+          mfaVerified: true,
           expiresAt: new Date(Date.now() + 3600000),
         },
       });

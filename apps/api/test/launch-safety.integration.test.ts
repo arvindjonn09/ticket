@@ -3,7 +3,7 @@ import { PrismaClient, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import type { Database } from "../src/database.js";
-import type { NotificationWorker } from "../src/notifications.js";
+import type { NotificationWorker } from "../src/modules/notifications/notifications.service.js";
 
 describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL)(
   "launch safety — isolated PostgreSQL/SMTP recipients",
@@ -69,7 +69,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       process.env.SMTP_FROM = "desk@test.invalid";
       owner = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL });
       const { Database } = await import("../dist/database.js");
-      const { NotificationWorker } = await import("../dist/notifications.js");
+      const { NotificationWorker } =
+        await import("../dist/modules/notifications/notifications.service.js");
       db = new Database();
       worker = new NotificationWorker(db);
       const tenant = await owner.tenant.create({
@@ -98,8 +99,10 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
               name === "admin" ? "admin" : ["owner", "agent"].includes(name) ? "agent" : "employee",
             passwordHash: "!",
             approverEligible: ["manager", "delegate"].includes(name),
-            mfaEnrolled: name === "admin",
-            mfaSecret: name === "admin" ? "isolated-fixture-secret-not-used" : null,
+            mfaEnrolled: ["admin", "owner", "agent"].includes(name),
+            mfaSecret: ["admin", "owner", "agent"].includes(name)
+              ? "isolated-fixture-secret-not-used"
+              : null,
           },
         });
         users[name] = { id: user.id, email: user.email };
@@ -310,7 +313,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       ).toEqual([users.owner!.email, users.agent!.email].sort());
     }, 30000);
     it("commits SMTP failure evidence and retries the same event without changing its audience", async () => {
-      const { NotificationWorker } = await import("../dist/notifications.js"),
+      const { NotificationWorker } =
+          await import("../dist/modules/notifications/notifications.service.js"),
         port = process.env.SMTP_PORT;
       process.env.SMTP_PORT = "1";
       const failing = new NotificationWorker(db);
@@ -341,7 +345,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
     }, 30000);
     it("reroutes corrections, notifies the destination instead of the old group, preserves sensitive CSV boundaries and alerts administrators on both fallback paths", async () => {
       const { createApp } = await import("../dist/main.js"),
-        { tokenHash } = await import("../dist/auth.js");
+        { tokenHash } = await import("../dist/modules/auth/auth.service.js");
       const destination = await owner.user.create({
         data: {
           tenantId,
@@ -349,6 +353,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
           email: `destination-${randomUUID()}@test.invalid`,
           role: "agent",
           passwordHash: "!",
+          mfaEnrolled: true,
+          mfaSecret: "isolated-fixture-secret-not-used",
         },
       });
       const group = await owner.department.create({
@@ -394,6 +400,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
             userId,
             tokenHash: tokenHash(token),
             csrfToken: csrf,
+            mfaVerified: true,
             expiresAt: new Date(Date.now() + 600000),
           },
         });

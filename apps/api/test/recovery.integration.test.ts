@@ -71,7 +71,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
           await owner.user.deleteMany({ where: { tenantId: id } });
           await owner.tenant.delete({ where: { id } });
         }
-        const { tokenHash } = await import("../dist/auth.js");
+        const { tokenHash } = await import("../dist/modules/auth/auth.service.js");
         for (const entry of [...fixtures, `forgot:ip:${ip}`, `reset:ip:${ip}`])
           await owner.$executeRaw`DELETE FROM auth_rate_limits WHERE key=${tokenHash(entry)}`;
         await owner.$disconnect();
@@ -156,7 +156,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
         await owner.$queryRaw`SELECT id FROM password_recoveries WHERE user_id=${inactive.id}::uuid`,
       ).toEqual([]);
       const item = await issue(active);
-      const { tokenHash } = await import("../dist/auth.js");
+      const { tokenHash } = await import("../dist/modules/auth/auth.service.js");
       expect(item.token).toHaveLength(43);
       expect(item.token_hash).toBe(tokenHash(item.token));
       expect(item.encrypted_url).not.toContain(item.token);
@@ -421,7 +421,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       },
     );
     it("enforces shared atomic limits and rejects direct infrastructure access", async () => {
-      const { reserveAuthAttempt, tokenHash } = await import("../dist/auth.js");
+      const { reserveAuthAttempt, tokenHash } =
+        await import("../dist/modules/auth/auth.service.js");
       const key = `fixture:${randomUUID()}`;
       fixtures.push(key);
       const results = await Promise.allSettled(
@@ -434,7 +435,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       await expect(reserveAuthAttempt(db2, key, 5)).resolves.toBeUndefined();
     });
     it("throttles concurrent password-login failures across two AuthService instances before credential work", async () => {
-      const { AuthService } = await import("../dist/auth.js");
+      const { AuthService } = await import("../dist/modules/auth/auth.service.js");
       const a = new AuthService(db),
         b = new AuthService(db2);
       const organisation = `missing-${randomUUID()}`,
@@ -456,7 +457,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       expect(statuses.filter((status) => status === 429)).toHaveLength(1);
     });
     it("rejects a blocked source IP before allocating a random account limiter key", async () => {
-      const { AuthService, tokenHash } = await import("../dist/auth.js");
+      const { AuthService, tokenHash } = await import("../dist/modules/auth/auth.service.js");
       const source = `blocked-${randomUUID()}`,
         organisation = `absent-${randomUUID()}`,
         email = "absent@test.invalid";
@@ -475,7 +476,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       ).toEqual([]);
     });
     it("rejects an old-email sign-in whose lookup raced an administrator email change", async () => {
-      const { AuthService } = await import("../dist/auth.js");
+      const { AuthService } = await import("../dist/modules/auth/auth.service.js");
       const { Database, lockConfiguration } = await import("../dist/database.js");
       const user = await account({ role: "employee", mfaEnrolled: false, mfaSecret: null }),
         lockName = `configuration:${tenantId}`;

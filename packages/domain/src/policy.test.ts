@@ -45,10 +45,12 @@ describe("incident policy", () => {
       expect(canTransition(actor, ticket, "In Progress")).toBe(false);
     }
   });
-  it("restricts sensitive content and all staff actions to its assigned group", () => {
+  it("lets active group agents read tickets while restricting sensitive content and work", () => {
     const outsider = { ...agent, departmentIds: ["other"] };
     expect(canReadTicket(outsider, ticket)).toBe(true);
     expect(canReadTicket(outsider, { ...ticket, sensitive: true })).toBe(false);
+    expect(canReadTicket({ ...outsider, departmentIds: [] }, ticket)).toBe(false);
+    expect(canReadTicket({ ...outsider, role: "employee" }, ticket)).toBe(false);
     expect(canClaimTicket(outsider, ticket)).toBe(false);
     expect(canMessage(outsider, ticket, "internal")).toBe(false);
     expect(canMessage(employee, ticket, "internal")).toBe(false);

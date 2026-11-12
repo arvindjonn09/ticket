@@ -3,9 +3,9 @@ import { PrismaClient } from "@prisma/client";
 import { hash, verify } from "argon2";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
-import type { AuthContext } from "../src/auth.js";
+import type { AuthContext } from "../src/modules/auth/auth.service.js";
 import type { Database } from "../src/database.js";
-import type { UsersService } from "../src/users.js";
+import type { UsersService } from "../src/modules/users/users.service.js";
 import type { CreateUserInput, UserInvitation, UserProfile } from "@astrama/contracts";
 
 describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL)(
@@ -51,9 +51,9 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       process.env.MFA_ENCRYPTION_KEY ??= "cd".repeat(32);
       owner = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL });
       const { Database } = await import("../dist/database.js");
-      const { UsersService } = await import("../dist/users.js");
-      const { TicketsService } = await import("../dist/tickets.js");
-      const { tokenHash } = await import("../dist/auth.js");
+      const { UsersService } = await import("../dist/modules/users/users.service.js");
+      const { TicketsService } = await import("../dist/modules/tickets/tickets.service.js");
+      const { tokenHash } = await import("../dist/modules/auth/auth.service.js");
       db = new Database();
       service = new UsersService(db, new TicketsService(db));
       const passwordHash = await hash(password);
@@ -72,8 +72,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
               email: `${role}@test.invalid`,
               passwordHash,
               role,
-              mfaEnrolled: role === "admin",
-              mfaSecret: role === "admin" ? "fixture-secret-not-used" : null,
+              mfaEnrolled: ["admin", "agent"].includes(role),
+              mfaSecret: ["admin", "agent"].includes(role) ? "fixture-secret-not-used" : null,
             },
           });
           const session = await owner.session.create({
@@ -82,7 +82,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
               userId: user.id,
               tokenHash: tokenHash(randomBytes(32).toString("hex")),
               csrfToken: randomUUID(),
-              mfaVerified: role === "admin",
+              mfaVerified: ["admin", "agent"].includes(role),
               expiresAt: new Date(Date.now() + 3600000),
             },
           });
@@ -101,7 +101,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
                 brandName: tenant.brandName,
               },
               csrfToken: session.csrfToken,
-              mfaVerified: role === "admin",
+              mfaVerified: ["admin", "agent"].includes(role),
             },
           };
           if (i) foreign = auth;
@@ -402,7 +402,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       });
       expect(approvals.map((row) => row.status)).toEqual(["Invalidated", "Pending"]);
       expect(approvals[1]!.approverId).toBe(managers[1]!.id);
-      const { TicketsService } = await import("../dist/tickets.js");
+      const { TicketsService } = await import("../dist/modules/tickets/tickets.service.js");
       const tickets = new TicketsService(db);
       await expect(
         tickets.get(
@@ -486,8 +486,10 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
         "preview expired",
       );
       // A different API instance must be able to commit a persisted preview exactly once.
-      const { UsersService: OtherUsersService } = await import("../dist/users.js");
-      const { TicketsService: OtherTicketsService } = await import("../dist/tickets.js");
+      const { UsersService: OtherUsersService } =
+        await import("../dist/modules/users/users.service.js");
+      const { TicketsService: OtherTicketsService } =
+        await import("../dist/modules/tickets/tickets.service.js");
       const result = await new OtherUsersService(db, new OtherTicketsService(db)).commit(admin, {
         previewToken: preview.previewToken,
       });
@@ -529,7 +531,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       ).toThrow("100");
     }, 30000);
     it("validates queue owners, preserves category restrictions, and rejects stale administrator sessions", async () => {
-      const { AdminService } = await import("../dist/admin.js");
+      const { AdminService } = await import("../dist/modules/organisation/admin.service.js");
       const config = new AdminService(db);
       const user = await owner.user.create({
         data: {

@@ -5,6 +5,7 @@ const testIp = "fd00:" + randomUUID().replaceAll("-", "").match(/.{4}/g)!.slice(
 import { hash, argon2id } from "argon2";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { SessionView, TicketDetail } from "@astrama/contracts";
+import { totp } from "../src/mfa.js";
 
 const enabled = Boolean(process.env.DATABASE_URL && process.env.MIGRATION_DATABASE_URL);
 const password = "Integration-test-password-2026!";
@@ -131,6 +132,16 @@ describe.skipIf(!enabled)("first incident slice — real PostgreSQL/runtime RLS"
     employee = await login(tenantSlugs[0]!, "employee@test.invalid");
     agent = await login(tenantSlugs[0]!, "agent@test.invalid");
     secondAgent = await login(tenantSlugs[0]!, "agent2@test.invalid");
+    for (const identity of [agent, secondAgent]) {
+      const setup = await inject("POST", "/auth/mfa/setup", identity);
+      expect(setup.statusCode, setup.body).toBe(201);
+      const verified = await inject("POST", "/auth/mfa/verify", identity, {
+        code: totp(setup.json().secret, Math.floor(Date.now() / 30000)),
+      });
+      expect(verified.statusCode, verified.body).toBe(201);
+      identity.view = verified.json();
+      identity.csrf = identity.view.csrfToken;
+    }
     colleague = await login(tenantSlugs[0]!, "colleague@test.invalid");
     otherTenant = await login(tenantSlugs[1]!, "employee@test.invalid");
   }, 30000);
@@ -144,6 +155,7 @@ describe.skipIf(!enabled)("first incident slice — real PostgreSQL/runtime RLS"
           "idempotency",
           "outbox",
           "audits",
+          "config_audits",
           "activities",
           "tickets",
           "sessions",
@@ -426,7 +438,7 @@ describe.skipIf(!enabled)("first incident slice — real PostgreSQL/runtime RLS"
       ).statusCode,
     ).toBe(403);
   });
-  it("preserves sensitivity on unstaffed category triage and hides notes from agents outside the stored group", async () => {
+  it("preserves sensitivity and denies agents without an active group membership", async () => {
     const response = await inject(
       "POST",
       "/tickets",
@@ -446,6 +458,16 @@ describe.skipIf(!enabled)("first incident slice — real PostgreSQL/runtime RLS"
       detail: { routingException: true },
     });
     await owner.membership.deleteMany({ where: { tenantId, userId: secondAgent.view.user.id } });
+    const alternateDepartment = await owner.department.create({
+      data: { tenantId, name: "Other active support" },
+    });
+    await owner.membership.create({
+      data: {
+        tenantId,
+        departmentId: alternateDepartment.id,
+        userId: secondAgent.view.user.id,
+      },
+    });
     expect((await inject("GET", `/tickets/${ticket.id}`, secondAgent)).statusCode).toBe(404);
     expect((await inject("GET", `/tickets?search=Sensitive`, secondAgent)).json().tickets).toEqual(
       [],

@@ -26,6 +26,9 @@ export function isGroupAgent(actor: Actor, ticket: Ticket): boolean {
     actor.departmentIds.includes(ticket.departmentId)
   );
 }
+export function hasActiveGroup(actor: Actor): boolean {
+  return actor.role === "agent" && actor.departmentIds.length > 0;
+}
 export function canReadTicket(actor: Actor, ticket: Ticket): boolean {
   if (actor.tenantId !== ticket.tenantId) return false;
   return (
@@ -33,7 +36,7 @@ export function canReadTicket(actor: Actor, ticket: Ticket): boolean {
     actor.id === ticket.submittedById ||
     actor.id === ticket.requestedForId ||
     (!!ticket.id && !!actor.approvalTicketIds?.includes(ticket.id)) ||
-    (actor.role === "agent" && (!ticket.sensitive || isGroupAgent(actor, ticket)))
+    (hasActiveGroup(actor) && (!ticket.sensitive || isGroupAgent(actor, ticket)))
   );
 }
 export function canClaimTicket(actor: Actor, ticket: Ticket): boolean {

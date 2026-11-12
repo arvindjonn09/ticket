@@ -6,9 +6,9 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultDataPolicy } from "@astrama/contracts";
-import type { AuthContext } from "../src/auth.js";
+import type { AuthContext } from "../src/modules/auth/auth.service.js";
 import type { Database } from "../src/database.js";
-import type { DataPolicyService } from "../src/data-lifecycle.js";
+import type { DataPolicyService } from "../src/modules/organisation/data-lifecycle.service.js";
 import type { exportTenant, deleteTenant, retainTenant } from "../src/operator-data.js";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 
@@ -56,8 +56,9 @@ describe.skipIf(!configured)(
       deleteData = operators.deleteTenant;
       retainData = operators.retainTenant;
       const { Database } = await import("../dist/database.js"),
-        { DataPolicyService } = await import("../dist/data-lifecycle.js"),
-        { tokenHash } = await import("../dist/auth.js");
+        { DataPolicyService } =
+          await import("../dist/modules/organisation/data-lifecycle.service.js"),
+        { tokenHash } = await import("../dist/modules/auth/auth.service.js");
       owner = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL });
       db = new Database();
       policies = new DataPolicyService(db);
@@ -274,7 +275,8 @@ describe.skipIf(!configured)(
         attachments: { ...policy.attachments, maxFilesPerTicket: 10, maxTotalBytes: 15 },
       });
       expect((await upload("combined.txt", "Safe content")).statusCode).toBe(400);
-      const { checkAttachmentPolicy } = await import("../dist/data-lifecycle.js");
+      const { checkAttachmentPolicy } =
+        await import("../dist/modules/organisation/data-lifecycle.service.js");
       expect(() => checkAttachmentPolicy(policy, "good.txt", 32)).toThrow("limits");
     }, 60000);
     it("exports a consistent scoped snapshot with attachment hashes, excludes all authentication material and audits request/outcome", async () => {

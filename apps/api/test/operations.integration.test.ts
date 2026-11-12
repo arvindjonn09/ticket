@@ -23,7 +23,7 @@ describe.skipIf(!configured)(
       process.env.NODE_ENV = "test";
       process.env.APP_ORIGIN = "http://localhost:4310";
       owner = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL });
-      const { tokenHash } = await import("../dist/auth.js"),
+      const { tokenHash } = await import("../dist/modules/auth/auth.service.js"),
         { encryptSecret, encryptionKey } = await import("../dist/mfa.js");
       tenantId = (
         await owner.tenant.create({
@@ -44,15 +44,14 @@ describe.skipIf(!configured)(
             email: `${role}@test.invalid`,
             role,
             passwordHash: "!",
-            mfaEnrolled: role === "admin",
-            mfaSecret:
-              role === "admin"
-                ? encryptSecret(
-                    "JBSWY3DPEHPK3PXP",
-                    `${tenantId}:${id}`,
-                    encryptionKey("ac".repeat(32)),
-                  )
-                : null,
+            mfaEnrolled: ["admin", "agent"].includes(role),
+            mfaSecret: ["admin", "agent"].includes(role)
+              ? encryptSecret(
+                  "JBSWY3DPEHPK3PXP",
+                  `${tenantId}:${id}`,
+                  encryptionKey("ac".repeat(32)),
+                )
+              : null,
           },
         });
         if (role === "admin") adminId = id;
@@ -64,7 +63,7 @@ describe.skipIf(!configured)(
             userId: id,
             tokenHash: tokenHash(token),
             csrfToken: randomUUID(),
-            mfaVerified: role === "admin",
+            mfaVerified: ["admin", "agent"].includes(role),
             expiresAt: new Date(Date.now() + 60000),
           },
         });

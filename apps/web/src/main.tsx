@@ -59,7 +59,7 @@ function App() {
   return (
     <Routes>
       <Route element={<Shell session={session.data} />}>
-        {session.data.user.role === "admin" && !session.data.mfaVerified ? (
+        {["admin", "agent"].includes(session.data.user.role) && !session.data.mfaVerified ? (
           <>
             <Route path="/authenticator" element={<AuthenticatorSetup session={session.data} />} />
             <Route path="*" element={<Navigate to="/authenticator" replace />} />

@@ -73,8 +73,8 @@ describe.skipIf(!process.env.BOOTSTRAP_TEST_DATABASE_URL)(
         admin: { name: "Administrator", email: "admin@test.invalid" },
       });
       const { Database } = await import("../dist/database.js");
-      const { TicketsService } = await import("../dist/tickets.js");
-      const { UsersService } = await import("../dist/users.js");
+      const { TicketsService } = await import("../dist/modules/tickets/tickets.service.js");
+      const { UsersService } = await import("../dist/modules/users/users.service.js");
       const runtime = new Database();
       try {
         await runtime.assertRuntimeRole();

@@ -1,17 +1,68 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { createHmac } from "node:crypto";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { decryptSecret } from "../apps/api/src/mfa.js";
 
 const password = process.env.DEMO_PASSWORD ?? "Astrama-demo-2026!";
+const { PrismaClient } = createRequire(resolve("apps/api/package.json"))("@prisma/client");
+const owner = new PrismaClient({
+  datasourceUrl:
+    process.env.MIGRATION_DATABASE_URL ??
+    "postgresql://astrama_owner:astrama-local-owner@localhost:5439/astrama",
+});
+function authenticatorCode(secret: string) {
+  const bits = [...secret]
+    .map((c) => "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".indexOf(c).toString(2).padStart(5, "0"))
+    .join("");
+  const key = Buffer.from((bits.match(/.{8}/g) ?? []).map((b) => parseInt(b, 2)));
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000)));
+  const digest = createHmac("sha1", key).update(counter).digest();
+  const offset = digest.at(-1)! & 15;
+  return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1000000).padStart(6, "0");
+}
 async function login(page: Page, role: "employee" | "agent", organisation = "harbour") {
+  let secret: string | undefined;
+  if (role === "agent") {
+    const tenant = await owner.tenant.findUniqueOrThrow({ where: { slug: organisation } });
+    const user = await owner.user.findUniqueOrThrow({
+      where: { tenantId_email: { tenantId: tenant.id, email: "agent@demo.test" } },
+      select: { id: true, mfaEnrolled: true, mfaSecret: true },
+    });
+    if (user.mfaEnrolled) {
+      if (!user.mfaSecret) throw new Error("Enrolled agent has no MFA secret");
+      secret = decryptSecret(user.mfaSecret, `${tenant.id}:${user.id}`);
+    }
+  }
   await page.goto("/");
   await page.getByLabel("Organisation", { exact: true }).fill(organisation);
   await page.getByLabel("Email address", { exact: true }).fill(`${role}@demo.test`);
   await page.getByLabel("Password", { exact: true }).fill(password);
+  if (secret)
+    await page
+      .getByLabel("Authenticator code (if configured)", { exact: true })
+      .fill(authenticatorCode(secret));
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  if (role === "agent" && !secret) {
+    await expect(
+      page.getByRole("heading", { name: "Set up your authenticator", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Begin setup", exact: true }).click();
+    await page.locator("details summary").click();
+    secret = await page.getByLabel("Setup secret", { exact: true }).inputValue();
+    await page.getByLabel("Authenticator code", { exact: true }).fill(authenticatorCode(secret));
+    await page.getByRole("button", { name: "Verify authenticator", exact: true }).click();
+  }
   await expect(
     page.getByRole("heading", { name: /^(My tickets|Tickets)$/, exact: true }),
   ).toBeVisible();
 }
+
+test.afterAll(async () => {
+  await owner.$disconnect();
+});
 
 test("employee and agent complete an incident without leaking internal notes across users or tenants", async ({
   browser,

@@ -77,7 +77,7 @@ export class AuthService {
       )
         throw new UnauthorizedException("Invalid organisation or credentials");
       let verified = false;
-      if (row.role === "admin" && user.mfaEnrolled) {
+      if (["admin", "agent"].includes(row.role) && user.mfaEnrolled) {
         const status = await this.consumeMfa(tx, user, input.totpCode ?? "");
         if (status !== true) return status;
         verified = true;
@@ -218,7 +218,8 @@ export class AuthService {
     return true;
   }
   async setupMfa(auth: AuthContext) {
-    if (auth.role !== "admin") throw new ForbiddenException("Administrator required");
+    if (auth.role !== "admin" && auth.role !== "agent")
+      throw new ForbiddenException("Administrator or support agent required");
     return this.db.withTenant(auth.tenantId, async (tx) => {
       await this.lockMfa(tx, auth.id);
       const user = await tx.user.findUniqueOrThrow({ where: { id: auth.id } });
@@ -242,7 +243,8 @@ export class AuthService {
     });
   }
   async verifyMfa(auth: AuthContext, body: unknown) {
-    if (auth.role !== "admin") throw new ForbiddenException("Administrator required");
+    if (auth.role !== "admin" && auth.role !== "agent")
+      throw new ForbiddenException("Administrator or support agent required");
     const input = mfaVerifySchema.parse(body);
     const result = await this.db.withTenant(auth.tenantId, async (tx) => {
       await this.lockMfa(tx, auth.id);
@@ -287,7 +289,7 @@ export class SessionGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthRequest>();
     request.auth = await this.auth.authenticate(request);
     if (
-      request.auth.role === "admin" &&
+      ["admin", "agent"].includes(request.auth.role) &&
       !request.auth.view.mfaVerified &&
       ![
         "/api/auth/session",
@@ -296,7 +298,7 @@ export class SessionGuard implements CanActivate {
         "/api/auth/mfa/verify",
       ].includes(request.url.split("?")[0]!)
     )
-      throw new ForbiddenException("Verify administrator MFA first");
+      throw new ForbiddenException("Verify your authenticator first");
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       this.auth.checkOrigin(request);
       const supplied = request.headers["x-csrf-token"];

@@ -250,7 +250,7 @@ void i18n.use(initReactI18next).init({
         authenticatorCode: "Authenticator code",
         authenticatorCodeOptional: "Authenticator code (if configured)",
         mfaTitle: "Set up your authenticator",
-        mfaIntro: "Protect your administrator account before configuring your organisation.",
+        mfaIntro: "Protect your account before accessing support tools.",
         mfaBegin: "Begin setup",
         mfaInstructions:
           "In your authenticator app, choose Add account and Scan QR code. Scan this code, then enter the six-digit code from the app below. Keep this QR code private.",

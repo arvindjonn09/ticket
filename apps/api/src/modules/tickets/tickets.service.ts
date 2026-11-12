@@ -14,6 +14,7 @@ import {
   canClaimTicket,
   canMessage,
   canReadTicket,
+  hasActiveGroup,
   canTransition,
   isGroupAgent,
   effectiveDepartment,
@@ -67,8 +68,8 @@ export class TicketsService {
           },
         });
         if (!session) throw new ForbiddenException("Session expired. Sign in again.");
-        if (user.role === "admin" && (!session.mfaVerified || !user.mfaEnrolled))
-          throw new ForbiddenException("MFA-verified administrator required");
+        if (["admin", "agent"].includes(user.role) && (!session.mfaVerified || !user.mfaEnrolled))
+          throw new ForbiddenException("MFA-enrolled support user required");
       }
       const outgoing = await tx.approvalDelegation.count({
         where: {
@@ -812,7 +813,10 @@ export class TicketsService {
     const input = manageTicketSchema.parse(body);
     return this.scoped(actor, async (tx, actor) => {
       const ticket = await this.record(tx, actor, id);
-      if (!isGroupAgent(actor, ticket) || terminalStates.includes(ticket.state))
+      if (
+        (!isGroupAgent(actor, ticket) && !(input.action === "transfer" && hasActiveGroup(actor))) ||
+        terminalStates.includes(ticket.state)
+      )
         throw new ForbiddenException(
           "An agent in the assigned group and an active ticket are required",
         );

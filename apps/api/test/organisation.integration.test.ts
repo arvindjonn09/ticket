@@ -159,6 +159,28 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
     it("restricts password-only admins, binds enrollment to its session, and rejects replay", async () => {
       expect((await call("GET", "/admin/config", admin)).statusCode).toBe(403);
       expect((await call("GET", "/tickets", admin)).statusCode).toBe(403);
+      expect((await call("GET", "/tickets", agent)).statusCode).toBe(403);
+      const agentSetup = await call("POST", "/auth/mfa/setup", agent);
+      expect(agentSetup.statusCode, agentSetup.body).toBe(201);
+      const agentSecret = agentSetup.json().secret as string;
+      const agentVerified = await call("POST", "/auth/mfa/verify", agent, {
+        code: totp(agentSecret, Math.floor(Date.now() / 30000)),
+      });
+      expect(agentVerified.statusCode, agentVerified.body).toBe(201);
+      agent.view = agentVerified.json();
+      expect((await call("GET", "/tickets", agent)).statusCode).toBe(200);
+      const agentLogin = {
+        organisation: agent.view.tenant.slug,
+        email: agent.view.user.email,
+        password,
+      };
+      expect((await call("POST", "/auth/login", undefined, agentLogin)).statusCode).toBe(401);
+      const agentLoginWithMfa = await call("POST", "/auth/login", undefined, {
+        ...agentLogin,
+        totpCode: totp(agentSecret, Math.floor(Date.now() / 30000) + 1),
+      });
+      expect(agentLoginWithMfa.statusCode, agentLoginWithMfa.body).toBe(201);
+      expect(agentLoginWithMfa.json().mfaVerified).toBe(true);
       const setup = await call("POST", "/auth/mfa/setup", admin);
       secret = setup.json().secret;
       const code = totp(secret, Math.floor(Date.now() / 30000));
@@ -582,7 +604,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
           ).statusCode,
         ).toBe(201);
       }
-      const { TicketsService } = await import("../dist/tickets.js");
+      const { TicketsService } = await import("../dist/modules/tickets/tickets.service.js");
       const service = app.get(TicketsService);
       const stale = {
         id: agent.view.user.id,

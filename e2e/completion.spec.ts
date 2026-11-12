@@ -29,6 +29,16 @@ async function signIn(page: Page, email: string) {
   await page.getByLabel("Email address", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  if (email.startsWith("agent@")) {
+    await expect(
+      page.getByRole("heading", { name: "Set up your authenticator", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Begin setup", exact: true }).click();
+    await page.locator("details summary").click();
+    const secret = await page.getByLabel("Setup secret", { exact: true }).inputValue();
+    await page.getByLabel("Authenticator code", { exact: true }).fill(code(secret));
+    await page.getByRole("button", { name: "Verify authenticator", exact: true }).click();
+  }
   if (!email.startsWith("admin@"))
     await expect(
       page.getByRole("heading", { name: /^(My tickets|Tickets)$/, exact: true }),

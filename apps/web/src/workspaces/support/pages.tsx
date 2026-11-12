@@ -1037,6 +1037,7 @@ export function IncidentDetail() {
   if (!ticket) return null;
   const isAgent =
     session.user.role === "agent" && session.user.departmentIds.includes(ticket.departmentId);
+  const canTransfer = session.user.role === "agent" && session.user.departmentIds.length > 0;
   const isRequester = session.user.id === ticket.callerId;
   const closed = ["Complete", "Cancelled", "Rejected"].includes(ticket.state);
   const canMessage =
@@ -1331,6 +1332,7 @@ export function IncidentDetail() {
             session={session}
             ticket={ticket}
             isAgent={isAgent}
+            canTransfer={canTransfer}
             isRequester={isRequester}
             closed={closed}
             onSaved={(updated) => {

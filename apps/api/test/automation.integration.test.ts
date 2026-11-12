@@ -2,10 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { Database } from "../src/database.js";
-import { TicketsService } from "../src/tickets.js";
-import { RequestsService } from "../src/requests.js";
-import { AutomationService } from "../src/automation.js";
-import type { AuthContext } from "../src/auth.js";
+import { TicketsService } from "../src/modules/tickets/tickets.service.js";
+import { RequestsService } from "../src/modules/requests/requests.service.js";
+import { AutomationService } from "../src/modules/automation/automation.service.js";
+import type { AuthContext } from "../src/modules/auth/auth.service.js";
 
 describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL)(
   "business automation — real PostgreSQL runtime",

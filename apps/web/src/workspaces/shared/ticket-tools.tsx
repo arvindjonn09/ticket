@@ -10,6 +10,7 @@ export function TicketManagement({
   session,
   ticket,
   isAgent,
+  canTransfer,
   isRequester,
   closed,
   onSaved,
@@ -17,6 +18,7 @@ export function TicketManagement({
   session: SessionView;
   ticket: TicketDetail;
   isAgent: boolean;
+  canTransfer: boolean;
   isRequester: boolean;
   closed: boolean;
   onSaved: (ticket: TicketDetail) => void;
@@ -27,7 +29,7 @@ export function TicketManagement({
   const catalog = useQuery({
     queryKey: ["catalog"],
     queryFn: () => api<Catalog>("/catalog"),
-    enabled: isAgent,
+    enabled: isAgent || canTransfer,
   });
   const assignment = useQuery({
     queryKey: ["assignment-options", ticket.id, ticket.departmentId],
@@ -66,7 +68,12 @@ export function TicketManagement({
       setAction("");
     },
   });
-  if (closed || (!isAgent && !(isRequester && ["Open", "Pending Approval"].includes(ticket.state))))
+  if (
+    closed ||
+    (!isAgent &&
+      !canTransfer &&
+      !(isRequester && ["Open", "Pending Approval"].includes(ticket.state)))
+  )
     return null;
   return (
     <div className="ticket-management">
@@ -84,7 +91,6 @@ export function TicketManagement({
           {isAgent && (
             <>
               <option value="triage">{t("triage")}</option>
-              <option value="transfer">{t("transfer")}</option>
               <option value="category">{t("changeCategory")}</option>
               {assignment.data?.canAssign && <option value="assign">{t("assignAgent")}</option>}
               {["Open", "In Progress"].includes(ticket.state) && (
@@ -93,7 +99,8 @@ export function TicketManagement({
               {ticket.state === "On Hold" && <option value="resume">{t("resumeWork")}</option>}
             </>
           )}
-          <option value="cancel">{t("cancelTicket")}</option>
+          {(isAgent || canTransfer) && <option value="transfer">{t("transfer")}</option>}
+          {(isAgent || isRequester) && <option value="cancel">{t("cancelTicket")}</option>}
         </select>
       </label>
       {action && (

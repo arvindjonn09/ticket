@@ -6,9 +6,9 @@ import { hash } from "argon2";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Database } from "../src/database.js";
-import { NotificationWorker } from "../src/notifications.js";
-import { scanFile } from "../src/attachments.js";
-import { csvCell } from "../src/reports.js";
+import { NotificationWorker } from "../src/modules/notifications/notifications.service.js";
+import { scanFile } from "../src/modules/attachments/attachments.service.js";
+import { csvCell } from "../src/modules/reports/reports.service.js";
 
 type Identity = { cookie: string; csrf: string; id: string };
 const configured =

@@ -29,7 +29,7 @@ export async function operationalHealth(db: Database) {
       (r) =>
         r.component === "backup" &&
         r.successful &&
-        Date.now() - r.checked_at.getTime() < 48 * 3600000,
+        Date.now() - r.checked_at.getTime() < 26 * 3600000,
     );
     const [queue] = await db.$queryRaw<
       { failed: bigint; overdue: bigint }[]
@@ -37,6 +37,16 @@ export async function operationalHealth(db: Database) {
     checks.queue = !!queue && Number(queue.failed) === 0 && Number(queue.overdue) === 0;
   } catch {
     /* Expose only component status, never connection strings or database errors. */
+  }
+  if (process.env.MONITOR_HOST_CHECKS === "1") {
+    Object.assign(
+      checks,
+      productionHostChecks(
+        process.env.HOST_DISK_USAGE_PERCENT ?? "",
+        process.env.TLS_CERTIFICATE_DAYS_REMAINING ?? "",
+      ),
+    );
+    if (process.env.FORCE_BACKUP_FAILURE === "1") checks.backup = false;
   }
   const storage = new S3Client({
     endpoint: process.env.S3_ENDPOINT,
@@ -76,6 +86,15 @@ export async function operationalHealth(db: Database) {
     healthy: Object.values(checks).every(Boolean),
     checks,
     checkedAt: new Date().toISOString(),
+  };
+}
+
+export function productionHostChecks(diskPercentText: string, certificateDaysText: string) {
+  const disk = Number(diskPercentText);
+  const certificateDays = Number(certificateDaysText);
+  return {
+    disk: !!diskPercentText && Number.isFinite(disk) && disk < 80,
+    certificate: !!certificateDaysText && Number.isFinite(certificateDays) && certificateDays >= 14,
   };
 }
 

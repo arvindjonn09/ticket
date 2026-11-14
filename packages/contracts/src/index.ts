@@ -1,4 +1,21 @@
 import { z } from "zod";
+export {
+  proposedSlaSettings,
+  slaSettingsSchema,
+  slaSettingsViewSchema,
+  type SlaSettingsInput,
+  type SlaSettingsView,
+} from "./sla.js";
+export {
+  emailCategorySelectionSchema,
+  emailCategoryViewSchema,
+  inboundMailAddressSchema,
+  inboundMailSettingsSchema,
+  inboundMailViewSchema,
+  type InboundMailAddress,
+  type InboundMailSettings,
+  type InboundMailView,
+} from "./inbound-mail.js";
 
 export const ticketStates = [
   "Open",
@@ -59,12 +76,18 @@ export const ticketQuerySchema = z
     assignedToId: z.string().uuid().optional(),
     assigned: z.enum(["unassigned", "me"]).optional(),
     untriaged: z.enum(["true", "false"]).optional(),
+    cursor: z.string().max(256).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
   })
   .strict()
   .refine(
     (input) => !input.assigned || !input.assignedToId,
     "Choose either assigned or assignedToId",
   );
+export const notificationPreferenceSchema = z
+  .object({ mode: z.enum(["immediate", "daily", "off"]) })
+  .strict();
+export const notificationPreferenceViewSchema = notificationPreferenceSchema;
 export const sessionViewSchema = z.object({
   user: z.object({
     id: z.string(),
@@ -125,6 +148,10 @@ export const ticketSummarySchema = z.object({
   submittedById: z.string(),
   submittedByName: z.string(),
   duplicateOfId: z.string().nullable(),
+  slaFirstResponseDueAt: z.string().nullable(),
+  slaResolutionDueAt: z.string().nullable(),
+  slaFirstRespondedAt: z.string().nullable(),
+  inboundUnverified: z.boolean(),
 });
 export const approvalViewSchema = z.object({
   id: z.string(),
@@ -150,6 +177,7 @@ export const ticketDetailSchema = ticketSummarySchema.extend({
     }),
   ),
   approvals: z.array(approvalViewSchema),
+  inboundSenderEmail: z.string().email().nullable(),
 });
 export type SessionView = z.infer<typeof sessionViewSchema>;
 export type TicketSummary = z.infer<typeof ticketSummarySchema>;

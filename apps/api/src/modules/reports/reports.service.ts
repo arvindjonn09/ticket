@@ -36,6 +36,7 @@ export class ReportsController {
       const records = (
         await tx.ticket.findMany({
           where: { tenantId: current.tenantId, id: { in: tickets.map((t) => t.id) } },
+          include: { department: { select: { name: true } } },
         })
       ).filter((t) => canReadTicket(current, t));
       const ids = records.map((t) => t.id),
@@ -84,6 +85,51 @@ export class ReportsController {
         (t) => !terminalStates.includes(t.state) && t.state !== "Resolved",
       );
       const pending = records.filter((t) => t.state === "Pending Approval");
+      const slaGroups = new Map<
+        string,
+        {
+          departmentId: string;
+          departmentName: string;
+          priority: string;
+          firstResponseMet: number;
+          firstResponseMeasured: number;
+          resolutionMet: number;
+          resolutionMeasured: number;
+        }
+      >();
+      for (const ticket of records) {
+        const key = `${ticket.departmentId}:${ticket.priority}`;
+        const group = slaGroups.get(key) ?? {
+          departmentId: ticket.departmentId,
+          departmentName: ticket.department.name,
+          priority: ticket.priority,
+          firstResponseMet: 0,
+          firstResponseMeasured: 0,
+          resolutionMet: 0,
+          resolutionMeasured: 0,
+        };
+        if (
+          ticket.slaFirstResponseDueAt &&
+          (ticket.slaFirstRespondedAt || ticket.slaFirstResponseDueAt <= new Date(now))
+        ) {
+          group.firstResponseMeasured++;
+          if (
+            ticket.slaFirstRespondedAt &&
+            ticket.slaFirstRespondedAt <= ticket.slaFirstResponseDueAt
+          )
+            group.firstResponseMet++;
+        }
+        if (
+          ticket.slaResolutionDueAt &&
+          (ticket.slaResolvedAt ||
+            (!terminalStates.includes(ticket.state) && ticket.slaResolutionDueAt <= new Date(now)))
+        ) {
+          group.resolutionMeasured++;
+          if (ticket.slaResolvedAt && ticket.slaResolvedAt <= ticket.slaResolutionDueAt)
+            group.resolutionMet++;
+        }
+        slaGroups.set(key, group);
+      }
       return {
         openCount: open.length,
         oldestOpenDays: Math.max(0, ...open.map((t) => elapsed(now, t.createdAt) / 24)),
@@ -99,6 +145,17 @@ export class ReportsController {
             .filter((t) => resolved.has(t.id))
             .map((t) => elapsed(resolved.get(t.id)!, t.createdAt)),
         ),
+        slaByDepartmentPriority: [...slaGroups.values()].map((group) => ({
+          departmentId: group.departmentId,
+          departmentName: group.departmentName,
+          priority: group.priority,
+          firstResponsePercent: group.firstResponseMeasured
+            ? (group.firstResponseMet / group.firstResponseMeasured) * 100
+            : null,
+          resolutionPercent: group.resolutionMeasured
+            ? (group.resolutionMet / group.resolutionMeasured) * 100
+            : null,
+        })),
       };
     });
     return {

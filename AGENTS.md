@@ -2,7 +2,7 @@
 
 ## Open review handoffs
 
-Before starting new work, read the open review handoffs in [docs/reviews/](docs/reviews/) (latest: [2026-11-12-claude-review.md](docs/reviews/2026-11-12-claude-review.md)). Execute its task packets in order (CX-01 first). Items marked as owner decisions must wait for the user's answer; do not choose a default.
+Before starting new work, read the open review handoffs in [docs/reviews/](docs/reviews/) (latest: [2026-11-12-claude-review.md](docs/reviews/2026-11-12-claude-review.md) and [2026-11-12-code-review.md](docs/reviews/2026-11-12-code-review.md)). Execute task packets in order (CX-01 first); run code-review packet CR-A before committing the in-progress SLA work, then CR-B to CR-F after the remaining CX packets. Items marked as owner decisions must wait for the user's answer; do not choose a default.
 
 ## Code changes
 

@@ -12,7 +12,7 @@ import {
 import { canConfigureOrganisation } from "@astrama/domain";
 import { dataPolicySchema, defaultDataPolicy, type DataPolicy } from "@astrama/contracts";
 import { AuthRequest, type AuthContext, SessionGuard } from "../auth/auth.service.js";
-import { Database, lockConfiguration, type Tx } from "../../database.js";
+import { Database, lockConfigurationExclusive, type Tx } from "../../database.js";
 
 export async function readDataPolicy(tx: Tx, tenantId: string): Promise<DataPolicy> {
   const [row] = await tx.$queryRaw<
@@ -47,7 +47,7 @@ export class DataPolicyService {
     if (!canConfigureOrganisation({ ...auth, mfaVerified: auth.view.mfaVerified }))
       throw new ForbiddenException("MFA-verified administrator required");
     return this.db.withTenant(auth.tenantId, async (tx) => {
-      await lockConfiguration(tx, auth.tenantId);
+      await lockConfigurationExclusive(tx, auth.tenantId);
       const user = await tx.user.findFirst({
         where: {
           tenantId: auth.tenantId,

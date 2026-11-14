@@ -15,8 +15,10 @@ import { UsersPanel, SettingsPanel } from "../employee/people";
 import { RequestItems } from "../../request-admin";
 import { ApprovalCorrections } from "../approver/completion";
 import { AutomationPanel } from "../../automation";
+import { SlaPanel } from "../../sla";
 import { DataPolicyPanel } from "../../data-policy";
 import { OperationsPanel } from "../../operations";
+import { InboundMailPanel } from "../../inbound-mail";
 
 export function AuthenticatorSetup({ session }: { session: SessionView }) {
   const { t } = useTranslation();
@@ -569,6 +571,8 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
                 <option value="approvals">{t("approvalCorrections")}</option>
                 <option value="settings">{t("settings")}</option>
                 <option value="automation">{t("automationSettings")}</option>
+                <option value="sla">{t("sla.settings")}</option>
+                <option value="inbound-mail">Inbound email</option>
                 <option value="data-policy">{t("dataPolicySettings")}</option>
                 <option value="operations">{t("serviceHealth")}</option>
               </select>
@@ -583,6 +587,12 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
           <div id="organisation-panels">
             <div hidden={section !== "automation"}>
               <AutomationPanel session={session} />
+            </div>
+            <div hidden={section !== "sla"}>
+              <SlaPanel session={session} />
+            </div>
+            <div hidden={section !== "inbound-mail"}>
+              <InboundMailPanel session={session} />
             </div>
             <div hidden={section !== "data-policy"}>
               <DataPolicyPanel session={session} />

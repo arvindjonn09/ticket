@@ -8,7 +8,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
   () => {
     const owner = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL });
     const origin = "http://localhost:4310",
-      concurrency = 20;
+      concurrency = 10;
     let app: NestFastifyApplication, tenantId: string, categoryId: string;
     const identities: { id: string; cookie: string; csrf: string }[] = [],
       ticketIds: string[] = [],

@@ -606,6 +606,13 @@ export function Reports({ session }: { session: SessionView }) {
         oldestApprovalHours: number;
         medianFirstResponseHours: number | null;
         medianResolutionHours: number | null;
+        slaByDepartmentPriority: {
+          departmentId: string;
+          departmentName: string;
+          priority: string;
+          firstResponsePercent: number | null;
+          resolutionPercent: number | null;
+        }[];
       }>("/reports/summary"),
   });
   return (
@@ -654,6 +661,37 @@ export function Reports({ session }: { session: SessionView }) {
                           : new Intl.NumberFormat(session.tenant.locale || "en", {
                               maximumFractionDigits: 1,
                             }).format(report.data[key])}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <h3>{t("reportMeasures.slaCompliance")}</h3>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t("team")}</th>
+                    <th>{t("priority")}</th>
+                    <th>{t("reportMeasures.firstResponseMet")}</th>
+                    <th>{t("reportMeasures.resolutionMet")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.data.slaByDepartmentPriority.map((row) => (
+                    <tr key={`${row.departmentId}:${row.priority}`}>
+                      <th scope="row">{row.departmentName}</th>
+                      <td>{row.priority}</td>
+                      <td>
+                        {row.firstResponsePercent === null
+                          ? "—"
+                          : `${new Intl.NumberFormat(session.tenant.locale || "en", { maximumFractionDigits: 1 }).format(row.firstResponsePercent)}%`}
+                      </td>
+                      <td>
+                        {row.resolutionPercent === null
+                          ? "—"
+                          : `${new Intl.NumberFormat(session.tenant.locale || "en", { maximumFractionDigits: 1 }).format(row.resolutionPercent)}%`}
                       </td>
                     </tr>
                   ))}

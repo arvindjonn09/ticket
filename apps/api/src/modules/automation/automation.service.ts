@@ -67,36 +67,44 @@ export class AutomationService {
     };
   }
   get(auth: AuthContext) {
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      this.admin(auth, actor);
-      return this.settings(tx, actor.tenantId);
-    });
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        this.admin(auth, actor);
+        return this.settings(tx, actor.tenantId);
+      },
+      { lock: "none" },
+    );
   }
   save(auth: AuthContext, body: unknown) {
     const input = automationSettingsSchema.parse(body);
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      this.admin(auth, actor);
-      const before = await this.settings(tx, actor.tenantId);
-      if (before.revision !== input.revision)
-        throw new ConflictException({
-          message: "Automation settings changed. Refresh and try again.",
-          current: before,
-        });
-      await tx.$executeRaw`INSERT INTO automation_settings(tenant_id,enabled,working_weekdays,holidays,reminder_days,escalation_days,auto_close_days,responsible_admin_id,revision)
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        this.admin(auth, actor);
+        const before = await this.settings(tx, actor.tenantId);
+        if (before.revision !== input.revision)
+          throw new ConflictException({
+            message: "Automation settings changed. Refresh and try again.",
+            current: before,
+          });
+        await tx.$executeRaw`INSERT INTO automation_settings(tenant_id,enabled,working_weekdays,holidays,reminder_days,escalation_days,auto_close_days,responsible_admin_id,revision)
         VALUES(${actor.tenantId}::uuid,${input.enabled},${input.workingWeekdays}::integer[],${input.holidays}::text[],${input.reminderDays},${input.escalationDays},${input.autoCloseDays},${actor.id}::uuid,${input.revision + 1})
         ON CONFLICT(tenant_id) DO UPDATE SET enabled=EXCLUDED.enabled,working_weekdays=EXCLUDED.working_weekdays,holidays=EXCLUDED.holidays,reminder_days=EXCLUDED.reminder_days,escalation_days=EXCLUDED.escalation_days,auto_close_days=EXCLUDED.auto_close_days,responsible_admin_id=EXCLUDED.responsible_admin_id,revision=EXCLUDED.revision`;
-      const after = await this.settings(tx, actor.tenantId);
-      await tx.configAudit.create({
-        data: {
-          tenantId: actor.tenantId,
-          actorId: actor.id,
-          entityId: actor.tenantId,
-          action: "automation.settings_updated",
-          detail: { before, after },
-        },
-      });
-      return after;
-    });
+        const after = await this.settings(tx, actor.tenantId);
+        await tx.configAudit.create({
+          data: {
+            tenantId: actor.tenantId,
+            actorId: actor.id,
+            entityId: actor.tenantId,
+            action: "automation.settings_updated",
+            detail: { before, after },
+          },
+        });
+        return after;
+      },
+      { lock: "exclusive" },
+    );
   }
   async dispatch(now = new Date()) {
     const tenants = await this.db.$queryRaw<

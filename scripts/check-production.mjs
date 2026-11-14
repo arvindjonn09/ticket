@@ -1,11 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
-import { X509Certificate, createPrivateKey, createPublicKey } from "node:crypto";
-import { isAbsolute, join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export function validateProduction(env, allowLocal = false) {
   const required = [
     "APP_DOMAIN",
+    "RELEASE_TAG",
     "POSTGRES_PASSWORD",
     "APP_DB_PASSWORD",
     "MFA_ENCRYPTION_KEY",
@@ -16,7 +16,6 @@ export function validateProduction(env, allowLocal = false) {
     "SMTP_PASSWORD",
     "SMTP_FROM",
     "OPERATOR_ALERT_EMAIL",
-    "TLS_DIRECTORY",
   ];
   const issues = required.filter((key) => !env[key]?.trim()).map((key) => `${key} is required`);
   if (
@@ -24,6 +23,8 @@ export function validateProduction(env, allowLocal = false) {
     (!allowLocal && !env.APP_DOMAIN?.includes("."))
   )
     issues.push("APP_DOMAIN must be a lowercase hostname");
+  if (!/^v\d+\.\d+\.\d+-[a-f0-9]{12}$/.test(env.RELEASE_TAG ?? ""))
+    issues.push("RELEASE_TAG must match a published version-SHA release tag");
   for (const key of ["POSTGRES_PASSWORD", "APP_DB_PASSWORD"])
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(env[key] ?? "") || /demo|local|change.?me/i.test(env[key]))
       issues.push(`${key} must be a strong URL-safe value`);
@@ -51,7 +52,6 @@ export function validateProduction(env, allowLocal = false) {
     ((env.SMTP_PORT ?? "587") === "587" && (env.SMTP_SECURE ?? "false") !== "false")
   )
     issues.push("Use SMTP_SECURE=true for port 465, or false with STARTTLS on port 587");
-  if (!isAbsolute(env.TLS_DIRECTORY ?? "")) issues.push("TLS_DIRECTORY must be absolute");
   return issues;
 }
 
@@ -76,22 +76,8 @@ async function main() {
   }
   const issues = validateProduction(env, allowLocal);
   if (issues.length) throw new Error(issues.join("\n"));
-  const certificate = new X509Certificate(await readFile(join(env.TLS_DIRECTORY, "fullchain.pem")));
-  const keyPath = join(env.TLS_DIRECTORY, "privkey.pem"),
-    key = createPrivateKey(await readFile(keyPath));
-  if (
-    !certificate.checkHost(env.APP_DOMAIN) ||
-    Date.parse(certificate.validTo) < Date.now() + 7 * 86400000 ||
-    Date.parse(certificate.validFrom) > Date.now()
-  )
-    throw new Error("Certificate hostname or validity period is unsuitable");
-  if (!certificate.publicKey.equals(createPublicKey(key)))
-    throw new Error("Certificate and private key do not match");
-  if (
-    process.platform !== "win32" &&
-    ((await stat(keyPath)).mode & 0o077 || (await stat(file)).mode & 0o077)
-  )
-    throw new Error("Environment and TLS private-key files must be accessible only by their owner");
+  if (process.platform !== "win32" && (await stat(file)).mode & 0o077)
+    throw new Error("Environment file must be accessible only by its owner");
   console.info("Production preflight passed. Values and private keys were not printed.");
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href)

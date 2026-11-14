@@ -1,10 +1,10 @@
 # Production deployment
 
-The production Compose stack provides HTTPS, separate database owner/runtime credentials, a non-root API/worker with a read-only filesystem, private database/object/scanner services, authenticated TLS email and operational checks. Actual hosting, DNS, a trusted certificate, SMTP credentials, offsite backup destination and customer pilot remain deployment inputs. The local demo is not a production installation.
+The production Compose stack provides Caddy-managed HTTPS with automatic certificate renewal, separate database owner/runtime credentials, a non-root API/worker with a read-only filesystem, private database/object/scanner services, authenticated TLS email and operational checks. Actual hosting, DNS, SMTP credentials, offsite backup destination and customer pilot remain deployment inputs. The local demo is not a production installation.
 
 ## Prepare a host and configuration
 
-Use a Linux host with Docker Compose, Node 24, sufficient storage for data and a full independent restore, and firewall access limited to HTTPS, HTTP certificate renewal and your operator access. Point the chosen DNS hostname at it. Obtain a trusted certificate for that hostname; put `fullchain.pem` and `privkey.pem` in an absolute directory outside the checkout, available only to the operator. Arrange certificate renewal and reload nginx after replacement.
+Use a Linux host with Docker Compose and Node 24, sufficient storage for data and a full independent restore, and firewall access for HTTP, HTTPS and operator administration. Point the chosen DNS hostname at it. Caddy obtains and renews certificates automatically; ports 80 and 443 must be reachable from the public internet. Keep the Caddy data and config volumes in host backup scope.
 
 Copy `.env.production.example` to a private `.env.production` file, set its permissions to `600`, and fill every required value. Generate independent random database, storage and application keys; never reuse the local demo values. Keep `MFA_ENCRYPTION_KEY` stable across releases and back it up separately. Database passwords use URL-safe characters; a random hexadecimal value is suitable. Use authenticated SMTP on 587 with `SMTP_SECURE=false` (mandatory STARTTLS), or 465 with `SMTP_SECURE=true`. Verify the sender/domain with the mail provider. Set a real operator alert mailbox.
 
@@ -13,7 +13,7 @@ Run from this checkout:
 ```sh
 node scripts/check-production.mjs .env.production
 docker compose --env-file .env.production -f compose.production.yaml config --quiet
-docker compose --env-file .env.production -f compose.production.yaml build
+docker compose --env-file .env.production -f compose.production.yaml pull
 docker compose --env-file .env.production -f compose.production.yaml up -d db storage scanner setup
 docker compose --env-file .env.production -f compose.production.yaml up -d --wait api worker web
 ```
@@ -28,15 +28,15 @@ Automation is disabled until that organisation enables its chosen business days,
 
 ## Health, alerts and backups
 
-The MFA-verified administrator can inspect **Organisation setup → Service health**. Docker checks API/database connectivity and worker heartbeats. The operator command checks database, worker freshness, queue backlog/failures, storage, scanner and a successful verified backup within 48 hours:
+The MFA-verified administrator can inspect **Organisation setup → Service health**. Docker checks API/database connectivity and worker heartbeats. The operator command checks database, worker freshness, queue backlog/failures, storage, scanner and a successful verified backup within 26 hours:
 
 ```sh
 docker compose --env-file .env.production -f compose.production.yaml --profile operations run --rm --no-deps monitor
 ```
 
-The monitor exits nonzero on failure and sends a generic component-only email to `OPERATOR_ALERT_EMAIL`. Schedule it every five minutes on the host and also use an independent external HTTPS uptime monitor; an in-stack check cannot report a completely failed host or mail provider. Repeated failures send repeated alerts, so route them to the operator's incident mailbox. Keep scheduler logs private.
+The monitor exits nonzero on failure and sends a generic component-only email to `OPERATOR_ALERT_EMAIL`. Install the host watcher described in [install.md](install.md); it checks filesystem usage and the live HTTPS certificate and invokes this monitor with those measurements. Schedule it every five minutes and also use an independent external HTTPS uptime monitor; an in-stack check cannot report a completely failed host or mail provider. Repeated failures send repeated alerts, so route them to the operator's incident mailbox. Keep scheduler logs private.
 
-Use [encrypted full backup and restore verification](backup-recovery.md), selecting `--compose compose.production.yaml --project astrama-production --env-file .env.production`. The backup discovers the running stack's configuration; it does not require printing private environment values. Schedule daily capture in an agreed maintenance window because capture briefly stops writers. Only a successful isolated database, object and key restore marks the backup healthy. Copy completed encrypted artifacts and the exact release images offsite, with the backup decryption key in a separate secret vault. Verify that destination and perform a replacement-host restore before accepting a recovery-time commitment. No external storage credentials are invented or configured automatically.
+Use [encrypted full backup and restore verification](backup-recovery.md) through the offsite backup script. Schedule daily capture in an agreed maintenance window because capture briefly stops writers. The script copies only verified encrypted snapshots to the configured rclone remote and applies the configured retention period. Keep the backup decryption key in a separate secret vault. Verify offsite access and perform a replacement-host restore before accepting a recovery-time commitment. Provider credentials are deployment inputs and are never put in the image or repository.
 
 See [account recovery and key rotation](recovery.md) and [tenant export, retention and deletion](data-lifecycle.md) for explicit operator commands. Identity evidence is required for lost-MFA recovery; possession of an email address is insufficient.
 

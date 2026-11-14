@@ -1,0 +1,16 @@
+[Unit]
+Description=Astrama host disk, certificate and application health check
+
+[Service]
+Type=oneshot
+User=astrama
+Group=astrama
+SupplementaryGroups=docker
+WorkingDirectory=/opt/astrama
+EnvironmentFile=/etc/astrama/backup.env
+UMask=0077
+ExecStart=/usr/bin/node /opt/astrama/scripts/production-watch.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

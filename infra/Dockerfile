@@ -30,7 +30,7 @@ USER node
 EXPOSE 4311
 CMD ["node", "dist/main.js"]
 
-FROM nginx:stable-alpine AS web
-COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/apps/web/dist /usr/share/nginx/html
-EXPOSE 80
+FROM caddy:2.10-alpine AS web
+COPY infra/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/apps/web/dist /srv
+EXPOSE 80 443

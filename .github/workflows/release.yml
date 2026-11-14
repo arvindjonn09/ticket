@@ -1,0 +1,80 @@
+name: Release images
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Find release tag for the verified commit
+        id: release
+        shell: bash
+        run: |
+          sha='${{ github.event.workflow_run.head_sha }}'
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor "$sha" origin/main || { echo 'Release commit must be on main' >&2; exit 1; }
+          tag="$(git tag --points-at "$sha" --list 'v*' | sort -V | tail -n 1)"
+          if [[ -z "$tag" ]]; then echo "tag=" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo 'Invalid release tag format' >&2; exit 1; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+        if: steps.release.outputs.tag != ''
+      - uses: docker/login-action@v3
+        if: steps.release.outputs.tag != ''
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set image tags
+        id: tags
+        shell: bash
+        if: steps.release.outputs.tag != ''
+        run: |
+          sha='${{ github.event.workflow_run.head_sha }}'
+          echo "version=${{ steps.release.outputs.tag }}-${sha:0:12}" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Build and publish setup image
+        uses: docker/build-push-action@v6
+        if: steps.release.outputs.tag != ''
+        with:
+          context: .
+          file: infra/Dockerfile
+          target: api
+          push: true
+          tags: ${{ steps.tags.outputs.registry }}/astrama-setup:${{ steps.tags.outputs.version }}
+      - name: Build and publish API and worker image
+        uses: docker/build-push-action@v6
+        if: steps.release.outputs.tag != ''
+        with:
+          context: .
+          file: infra/Dockerfile
+          target: api-production
+          push: true
+          tags: ${{ steps.tags.outputs.registry }}/astrama-api:${{ steps.tags.outputs.version }}
+      - name: Build and publish web image
+        uses: docker/build-push-action@v6
+        if: steps.release.outputs.tag != ''
+        with:
+          context: .
+          file: infra/Dockerfile
+          target: web
+          push: true
+          tags: ${{ steps.tags.outputs.registry }}/astrama-web:${{ steps.tags.outputs.version }}
+      - name: Publish release notes
+        uses: softprops/action-gh-release@v2
+        if: steps.release.outputs.tag != ''
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          generate_release_notes: true

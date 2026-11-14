@@ -33,6 +33,7 @@ import {
 import { SessionGuard, type AuthContext, type AuthRequest } from "../auth/auth.service.js";
 import { type Tx } from "../../database.js";
 import { ticketInclude, TicketsService } from "../tickets/tickets.service.js";
+import { makeSlaSnapshot } from "../sla/sla.policy.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const itemView = (item: CatalogItem) => ({
@@ -68,140 +69,162 @@ export class RequestsService {
     return total;
   }
   catalog(auth: AuthContext) {
-    return this.tickets.scoped(auth, async (tx) => ({
-      items: (
-        await tx.catalogItem.findMany({
-          where: {
-            tenantId: auth.tenantId,
-            active: true,
-            category: { active: true, allowRequests: true },
-          },
-          orderBy: { name: "asc" },
-        })
-      ).map(itemView),
-      users: await tx.user.findMany({
-        where: { tenantId: auth.tenantId, active: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-    }));
-  }
-  items(auth: AuthContext) {
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      this.admin(auth, actor);
-      return {
+    return this.tickets.scoped(
+      auth,
+      async (tx) => ({
         items: (
           await tx.catalogItem.findMany({
-            where: { tenantId: actor.tenantId },
+            where: {
+              tenantId: auth.tenantId,
+              active: true,
+              category: { active: true, allowRequests: true },
+            },
             orderBy: { name: "asc" },
           })
         ).map(itemView),
-        approvers: await tx.user.findMany({
-          where: { tenantId: actor.tenantId, active: true, approverEligible: true },
+        users: await tx.user.findMany({
+          where: { tenantId: auth.tenantId, active: true },
           select: { id: true, name: true },
           orderBy: { name: "asc" },
         }),
-      };
-    });
+      }),
+      { lock: "none" },
+    );
+  }
+  items(auth: AuthContext) {
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        this.admin(auth, actor);
+        return {
+          items: (
+            await tx.catalogItem.findMany({
+              where: { tenantId: actor.tenantId },
+              orderBy: { name: "asc" },
+            })
+          ).map(itemView),
+          approvers: await tx.user.findMany({
+            where: { tenantId: actor.tenantId, active: true, approverEligible: true },
+            select: { id: true, name: true },
+            orderBy: { name: "asc" },
+          }),
+        };
+      },
+      { lock: "none" },
+    );
   }
   item(auth: AuthContext, body: unknown, id?: string) {
     const input = id ? updateRequestItemSchema.parse(body) : createRequestItemSchema.parse(body);
     if (id) this.validId(id);
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      this.admin(auth, actor);
-      const before = id
-        ? await tx.catalogItem.findFirst({ where: { tenantId: actor.tenantId, id } })
-        : null;
-      if (id && !before) throw new NotFoundException("Request item not found");
-      if (before && before.revision !== updateRequestItemSchema.parse(body).revision)
-        throw new ConflictException({ message: "Request item changed", current: itemView(before) });
-      if (
-        before &&
-        (before.currency !== input.currency || before.recurringPeriod !== input.recurringPeriod) &&
-        (await tx.ticket.count({
-          where: { tenantId: actor.tenantId, itemId: before.id, state: { notIn: terminalStates } },
-        }))
-      )
-        throw new ConflictException(
-          "Currency and recurring cost period cannot change while requests are active. Create another item or finish the existing requests first.",
-        );
-      if (
-        !(await tx.category.findFirst({
-          where: {
-            tenantId: actor.tenantId,
-            id: input.categoryId,
-            active: true,
-            allowRequests: true,
-          },
-        }))
-      )
-        throw new BadRequestException("Choose an active request category");
-      for (const [approverId, vp] of [
-        [input.vpApproverId, true],
-        [input.alternateApproverId, false],
-      ] as const) {
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        this.admin(auth, actor);
+        const before = id
+          ? await tx.catalogItem.findFirst({ where: { tenantId: actor.tenantId, id } })
+          : null;
+        if (id && !before) throw new NotFoundException("Request item not found");
+        if (before && before.revision !== updateRequestItemSchema.parse(body).revision)
+          throw new ConflictException({
+            message: "Request item changed",
+            current: itemView(before),
+          });
         if (
-          approverId &&
-          !(await tx.user.findFirst({
+          before &&
+          (before.currency !== input.currency ||
+            before.recurringPeriod !== input.recurringPeriod) &&
+          (await tx.ticket.count({
             where: {
               tenantId: actor.tenantId,
-              id: approverId,
-              active: true,
-              approverEligible: true,
-              ...(vp ? { isVp: true } : {}),
+              itemId: before.id,
+              state: { notIn: terminalStates },
             },
           }))
         )
-          throw new BadRequestException("Choose an active eligible approver in this organisation");
-      }
-      const { revision: _revision, ...data } = { ...input, revision: 0 };
-      void _revision;
-      try {
-        const row = before
-          ? await tx.catalogItem.update({
-              where: { id: before.id },
-              data: { ...data, revision: { increment: 1 } },
-            })
-          : await tx.catalogItem.create({ data: { tenantId: actor.tenantId, ...data } });
+          throw new ConflictException(
+            "Currency and recurring cost period cannot change while requests are active. Create another item or finish the existing requests first.",
+          );
         if (
-          before &&
-          (
-            [
-              "requiresManager",
-              "requiresVp",
-              "vpThresholdMinor",
-              "vpApproverId",
-              "alternateApproverId",
-            ] as const
-          ).some((field) => before[field] !== row[field])
-        ) {
-          const affected = await tx.ticket.findMany({
-            where: { tenantId: actor.tenantId, itemId: row.id, state: { notIn: terminalStates } },
-          });
-          for (const ticket of affected) {
-            await tx.ticket.update({
-              where: { id: ticket.id },
-              data: { revision: { increment: 1 }, updatedAt: new Date() },
-            });
-            await this.tickets.evaluateApprovals(tx, actor, ticket, row);
-          }
+          !(await tx.category.findFirst({
+            where: {
+              tenantId: actor.tenantId,
+              id: input.categoryId,
+              active: true,
+              allowRequests: true,
+            },
+          }))
+        )
+          throw new BadRequestException("Choose an active request category");
+        for (const [approverId, vp] of [
+          [input.vpApproverId, true],
+          [input.alternateApproverId, false],
+        ] as const) {
+          if (
+            approverId &&
+            !(await tx.user.findFirst({
+              where: {
+                tenantId: actor.tenantId,
+                id: approverId,
+                active: true,
+                approverEligible: true,
+                ...(vp ? { isVp: true } : {}),
+              },
+            }))
+          )
+            throw new BadRequestException(
+              "Choose an active eligible approver in this organisation",
+            );
         }
-        await tx.configAudit.create({
-          data: {
-            tenantId: actor.tenantId,
-            actorId: actor.id,
-            entityId: row.id,
-            action: before ? "request_item.updated" : "request_item.created",
-            detail: { before: before ? itemView(before) : null, after: itemView(row) },
-          },
-        });
-        return itemView(row);
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
-          throw new ConflictException("Request item name is already used");
-        throw error;
-      }
-    });
+        const { revision: _revision, ...data } = { ...input, revision: 0 };
+        void _revision;
+        try {
+          const row = before
+            ? await tx.catalogItem.update({
+                where: { id: before.id },
+                data: { ...data, revision: { increment: 1 } },
+              })
+            : await tx.catalogItem.create({ data: { tenantId: actor.tenantId, ...data } });
+          if (
+            before &&
+            (
+              [
+                "requiresManager",
+                "requiresVp",
+                "vpThresholdMinor",
+                "vpApproverId",
+                "alternateApproverId",
+              ] as const
+            ).some((field) => before[field] !== row[field])
+          ) {
+            const affected = await tx.ticket.findMany({
+              where: { tenantId: actor.tenantId, itemId: row.id, state: { notIn: terminalStates } },
+            });
+            for (const ticket of affected) {
+              await tx.ticket.update({
+                where: { id: ticket.id },
+                data: { revision: { increment: 1 }, updatedAt: new Date() },
+              });
+              await this.tickets.evaluateApprovals(tx, actor, ticket, row);
+            }
+          }
+          await tx.configAudit.create({
+            data: {
+              tenantId: actor.tenantId,
+              actorId: actor.id,
+              entityId: row.id,
+              action: before ? "request_item.updated" : "request_item.created",
+              detail: { before: before ? itemView(before) : null, after: itemView(row) },
+            },
+          });
+          return itemView(row);
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+            throw new ConflictException("Request item name is already used");
+          throw error;
+        }
+      },
+      { lock: "exclusive" },
+    );
   }
   private async evaluate(tx: Tx, actor: Actor, ticket: Ticket, item: CatalogItem) {
     return this.tickets.evaluateApprovals(tx, actor, ticket, item);
@@ -252,6 +275,7 @@ export class RequestsService {
       );
       const totalCostMinor = this.total(input.quantity, item.unitCostMinor),
         tenant = await tx.tenant.findUniqueOrThrow({ where: { id: actor.tenantId } });
+      const sla = await makeSlaSnapshot(tx, actor.tenantId, "P4", new Date(), true);
       const [counter] = await tx.$queryRaw<
         { sequence: number }[]
       >`INSERT INTO counters(tenant_id,type,sequence) VALUES (${actor.tenantId}::uuid,'request',1) ON CONFLICT (tenant_id,type) DO UPDATE SET sequence=counters.sequence+1 RETURNING sequence`;
@@ -270,6 +294,7 @@ export class RequestsService {
           sensitive: route.sensitive,
           priority: "P4",
           severity: tenant.defaultSeverity,
+          ...sla,
           ...input,
           unitCostMinor: item.unitCostMinor,
           totalCostMinor,
@@ -354,51 +379,59 @@ export class RequestsService {
     });
   }
   corrections(auth: AuthContext) {
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      this.admin(auth, actor);
-      return {
-        tickets: (
-          await tx.ticket.findMany({
-            where: {
-              tenantId: actor.tenantId,
-              state: "Pending Approval",
-              approvalCorrectionReason: { not: null },
-            },
-            select: { id: true, number: true, revision: true, approvalCorrectionReason: true },
-            orderBy: { createdAt: "asc" },
-          })
-        ).map((t) => ({
-          id: t.id,
-          number: t.number,
-          summary: "Approval configuration correction required",
-          revision: t.revision,
-          correctionReason: t.approvalCorrectionReason,
-        })),
-      };
-    });
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        this.admin(auth, actor);
+        return {
+          tickets: (
+            await tx.ticket.findMany({
+              where: {
+                tenantId: actor.tenantId,
+                state: "Pending Approval",
+                approvalCorrectionReason: { not: null },
+              },
+              select: { id: true, number: true, revision: true, approvalCorrectionReason: true },
+              orderBy: { createdAt: "asc" },
+            })
+          ).map((t) => ({
+            id: t.id,
+            number: t.number,
+            summary: "Approval configuration correction required",
+            revision: t.revision,
+            correctionReason: t.approvalCorrectionReason,
+          })),
+        };
+      },
+      { lock: "none" },
+    );
   }
   correct(auth: AuthContext, id: string, body: unknown) {
     const input = correctionSchema.parse(body);
     this.validId(id);
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      this.admin(auth, actor);
-      const ticket = await tx.ticket.findFirst({
-        where: { tenantId: actor.tenantId, id, type: "request", state: "Pending Approval" },
-        include: { item: true },
-      });
-      if (!ticket?.item) throw new NotFoundException("Pending request not found");
-      if (ticket.revision !== input.revision)
-        throw new ConflictException("Request changed. Refresh and try again.");
-      await tx.ticket.update({
-        where: { id },
-        data: { revision: { increment: 1 }, updatedAt: new Date() },
-      });
-      await this.evaluate(tx, actor, ticket, ticket.item);
-      await this.tickets.event(tx, actor, id, "request.approvals_corrected", {
-        reason: input.reason,
-      });
-      return { id, revision: ticket.revision + 1 };
-    });
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        this.admin(auth, actor);
+        const ticket = await tx.ticket.findFirst({
+          where: { tenantId: actor.tenantId, id, type: "request", state: "Pending Approval" },
+          include: { item: true },
+        });
+        if (!ticket?.item) throw new NotFoundException("Pending request not found");
+        if (ticket.revision !== input.revision)
+          throw new ConflictException("Request changed. Refresh and try again.");
+        await tx.ticket.update({
+          where: { id },
+          data: { revision: { increment: 1 }, updatedAt: new Date() },
+        });
+        await this.evaluate(tx, actor, ticket, ticket.item);
+        await this.tickets.event(tx, actor, id, "request.approvals_corrected", {
+          reason: input.reason,
+        });
+        return { id, revision: ticket.revision + 1 };
+      },
+      { lock: "exclusive" },
+    );
   }
   private async acting(
     tx: Tx,
@@ -454,68 +487,72 @@ export class RequestsService {
     );
   }
   queue(auth: AuthContext) {
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      const rows = await tx.approval.findMany({
-        where: {
-          tenantId: actor.tenantId,
-          status: "Pending",
-          ticket: { state: "Pending Approval", id: { in: actor.approvalTicketIds ?? [] } },
-        },
-        include: {
-          approver: true,
-          ticket: { include: { requestedFor: true, caller: true, item: true } },
-          decidedBy: true,
-        },
-        orderBy: [{ ticket: { createdAt: "asc" } }, { stage: "asc" }],
-      });
-      const approvals = [];
-      for (const row of rows) {
-        if (
-          row.version !== row.ticket.approvalVersion ||
-          row.correctionReason ||
-          !(await this.acting(tx, actor, row))
-        )
-          continue;
-        if (
-          row.stage === "vp" &&
-          (await tx.approval.count({
-            where: {
-              tenantId: actor.tenantId,
-              ticketId: row.ticketId,
-              version: row.version,
-              stage: "manager",
-              status: { not: "Approved" },
-            },
-          }))
-        )
-          continue;
-        approvals.push({
-          id: row.id,
-          ticketId: row.ticketId,
-          number: row.ticket.number,
-          summary: row.ticket.summary,
-          stage: row.stage,
-          status: row.status,
-          version: row.version,
-          approverId: row.approverId,
-          approverName: row.approver?.name ?? null,
-          decidedById: null,
-          decidedByName: null,
-          decidedAt: null,
-          comment: null,
-          correctionReason: row.correctionReason,
-          revision: row.ticket.revision,
-          requestedForName: row.ticket.requestedFor?.name ?? "",
-          totalCostMinor: row.ticket.totalCostMinor,
-          currency: row.ticket.currency,
-          createdAt: row.ticket.createdAt.toISOString(),
-          callerName: row.ticket.caller.name,
-          itemName: row.ticket.item?.name ?? "",
-          justification: row.ticket.justification,
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        const rows = await tx.approval.findMany({
+          where: {
+            tenantId: actor.tenantId,
+            status: "Pending",
+            ticket: { state: "Pending Approval", id: { in: actor.approvalTicketIds ?? [] } },
+          },
+          include: {
+            approver: true,
+            ticket: { include: { requestedFor: true, caller: true, item: true } },
+            decidedBy: true,
+          },
+          orderBy: [{ ticket: { createdAt: "asc" } }, { stage: "asc" }],
         });
-      }
-      return { approvals };
-    });
+        const approvals = [];
+        for (const row of rows) {
+          if (
+            row.version !== row.ticket.approvalVersion ||
+            row.correctionReason ||
+            !(await this.acting(tx, actor, row))
+          )
+            continue;
+          if (
+            row.stage === "vp" &&
+            (await tx.approval.count({
+              where: {
+                tenantId: actor.tenantId,
+                ticketId: row.ticketId,
+                version: row.version,
+                stage: "manager",
+                status: { not: "Approved" },
+              },
+            }))
+          )
+            continue;
+          approvals.push({
+            id: row.id,
+            ticketId: row.ticketId,
+            number: row.ticket.number,
+            summary: row.ticket.summary,
+            stage: row.stage,
+            status: row.status,
+            version: row.version,
+            approverId: row.approverId,
+            approverName: row.approver?.name ?? null,
+            decidedById: null,
+            decidedByName: null,
+            decidedAt: null,
+            comment: null,
+            correctionReason: row.correctionReason,
+            revision: row.ticket.revision,
+            requestedForName: row.ticket.requestedFor?.name ?? "",
+            totalCostMinor: row.ticket.totalCostMinor,
+            currency: row.ticket.currency,
+            createdAt: row.ticket.createdAt.toISOString(),
+            callerName: row.ticket.caller.name,
+            itemName: row.ticket.item?.name ?? "",
+            justification: row.ticket.justification,
+          });
+        }
+        return { approvals };
+      },
+      { approvals: true, lock: "none" },
+    );
   }
   decide(auth: AuthContext, id: string, body: unknown) {
     const input = approvalDecisionSchema.parse(body);
@@ -622,125 +659,138 @@ export class RequestsService {
       });
   }
   delegations(auth: AuthContext) {
-    return this.tickets.scoped(auth, async (tx, actor) => ({
-      delegations: (
-        await tx.approvalDelegation.findMany({
-          where: { tenantId: actor.tenantId, approverId: actor.id, active: true },
-          orderBy: { startsAt: "asc" },
-        })
-      ).map((d) => ({
-        id: d.id,
-        delegateId: d.delegateId,
-        startsAt: d.startsAt.toISOString(),
-        endsAt: d.endsAt.toISOString(),
-        revision: d.revision,
-      })),
-      users: await tx.user.findMany({
-        where: {
-          tenantId: actor.tenantId,
-          active: true,
-          approverEligible: true,
-          id: { not: actor.id },
-        },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => ({
+        delegations: (
+          await tx.approvalDelegation.findMany({
+            where: { tenantId: actor.tenantId, approverId: actor.id, active: true },
+            orderBy: { startsAt: "asc" },
+          })
+        ).map((d) => ({
+          id: d.id,
+          delegateId: d.delegateId,
+          startsAt: d.startsAt.toISOString(),
+          endsAt: d.endsAt.toISOString(),
+          revision: d.revision,
+        })),
+        users: await tx.user.findMany({
+          where: {
+            tenantId: actor.tenantId,
+            active: true,
+            approverEligible: true,
+            id: { not: actor.id },
+          },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
       }),
-    }));
+      { lock: "none" },
+    );
   }
   delegate(auth: AuthContext, body: unknown) {
     const input = delegationSchema.parse(body);
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      const [original, delegate] = await Promise.all([
-        tx.user.findFirst({
-          where: { tenantId: actor.tenantId, id: actor.id, active: true, approverEligible: true },
-        }),
-        tx.user.findFirst({
-          where: {
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        const [original, delegate] = await Promise.all([
+          tx.user.findFirst({
+            where: { tenantId: actor.tenantId, id: actor.id, active: true, approverEligible: true },
+          }),
+          tx.user.findFirst({
+            where: {
+              tenantId: actor.tenantId,
+              id: input.delegateId,
+              active: true,
+              approverEligible: true,
+            },
+          }),
+        ]);
+        if (
+          !original ||
+          !delegate ||
+          original.id === delegate.id ||
+          (original.isVp && !delegate.isVp)
+        )
+          throw new BadRequestException(
+            "Delegate must be another active eligible same-organisation approver with sufficient authority",
+          );
+        const startsAt = new Date(input.startsAt),
+          endsAt = new Date(input.endsAt);
+        if (endsAt <= new Date())
+          throw new BadRequestException("Delegation must end in the future");
+        if (
+          await tx.approvalDelegation.count({
+            where: {
+              tenantId: actor.tenantId,
+              active: true,
+              startsAt: { lt: endsAt },
+              endsAt: { gt: startsAt },
+              OR: [{ delegateId: actor.id }, { approverId: delegate.id }, { approverId: actor.id }],
+            },
+          })
+        )
+          throw new ConflictException(
+            "Overlapping delegations and delegation chains are not permitted",
+          );
+        const row = await tx.approvalDelegation.create({
+          data: {
             tenantId: actor.tenantId,
-            id: input.delegateId,
-            active: true,
-            approverEligible: true,
+            approverId: actor.id,
+            delegateId: delegate.id,
+            startsAt,
+            endsAt,
           },
-        }),
-      ]);
-      if (
-        !original ||
-        !delegate ||
-        original.id === delegate.id ||
-        (original.isVp && !delegate.isVp)
-      )
-        throw new BadRequestException(
-          "Delegate must be another active eligible same-organisation approver with sufficient authority",
-        );
-      const startsAt = new Date(input.startsAt),
-        endsAt = new Date(input.endsAt);
-      if (endsAt <= new Date()) throw new BadRequestException("Delegation must end in the future");
-      if (
-        await tx.approvalDelegation.count({
-          where: {
+        });
+        await tx.configAudit.create({
+          data: {
             tenantId: actor.tenantId,
-            active: true,
-            startsAt: { lt: endsAt },
-            endsAt: { gt: startsAt },
-            OR: [{ delegateId: actor.id }, { approverId: delegate.id }, { approverId: actor.id }],
+            actorId: actor.id,
+            entityId: row.id,
+            action: "approval.delegation_created",
+            detail: { delegateId: delegate.id, startsAt: input.startsAt, endsAt: input.endsAt },
           },
-        })
-      )
-        throw new ConflictException(
-          "Overlapping delegations and delegation chains are not permitted",
-        );
-      const row = await tx.approvalDelegation.create({
-        data: {
-          tenantId: actor.tenantId,
-          approverId: actor.id,
-          delegateId: delegate.id,
-          startsAt,
-          endsAt,
-        },
-      });
-      await tx.configAudit.create({
-        data: {
-          tenantId: actor.tenantId,
-          actorId: actor.id,
-          entityId: row.id,
-          action: "approval.delegation_created",
-          detail: { delegateId: delegate.id, startsAt: input.startsAt, endsAt: input.endsAt },
-        },
-      });
-      return {
-        id: row.id,
-        delegateId: row.delegateId,
-        startsAt: row.startsAt.toISOString(),
-        endsAt: row.endsAt.toISOString(),
-        revision: row.revision,
-      };
-    });
+        });
+        return {
+          id: row.id,
+          delegateId: row.delegateId,
+          startsAt: row.startsAt.toISOString(),
+          endsAt: row.endsAt.toISOString(),
+          revision: row.revision,
+        };
+      },
+      { lock: "exclusive" },
+    );
   }
   revoke(auth: AuthContext, id: string, body: unknown) {
     const input = revisionSchema.parse(body);
     this.validId(id);
-    return this.tickets.scoped(auth, async (tx, actor) => {
-      const row = await tx.approvalDelegation.findFirst({
-        where: { tenantId: actor.tenantId, id, approverId: actor.id },
-      });
-      if (!row) throw new NotFoundException("Delegation not found");
-      if (row.revision !== input.revision || !row.active)
-        throw new ConflictException("Delegation changed");
-      await tx.approvalDelegation.update({
-        where: { id },
-        data: { active: false, revision: { increment: 1 } },
-      });
-      await tx.configAudit.create({
-        data: {
-          tenantId: actor.tenantId,
-          actorId: actor.id,
-          entityId: id,
-          action: "approval.delegation_revoked",
-          detail: {},
-        },
-      });
-      return { ok: true };
-    });
+    return this.tickets.scoped(
+      auth,
+      async (tx, actor) => {
+        const row = await tx.approvalDelegation.findFirst({
+          where: { tenantId: actor.tenantId, id, approverId: actor.id },
+        });
+        if (!row) throw new NotFoundException("Delegation not found");
+        if (row.revision !== input.revision || !row.active)
+          throw new ConflictException("Delegation changed");
+        await tx.approvalDelegation.update({
+          where: { id },
+          data: { active: false, revision: { increment: 1 } },
+        });
+        await tx.configAudit.create({
+          data: {
+            tenantId: actor.tenantId,
+            actorId: actor.id,
+            entityId: id,
+            action: "approval.delegation_revoked",
+            detail: {},
+          },
+        });
+        return { ok: true };
+      },
+      { lock: "exclusive" },
+    );
   }
 }
 

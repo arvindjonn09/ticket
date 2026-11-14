@@ -12,6 +12,7 @@ test("production preflight rejects missing, shared and demonstration secrets", (
   assert.ok(validateProduction({}).length > 5);
   const env = {
     APP_DOMAIN: "desk.example.com",
+    RELEASE_TAG: "v0.1.0-1234567890ab",
     POSTGRES_PASSWORD: randomBytes(24).toString("hex"),
     APP_DB_PASSWORD: randomBytes(24).toString("hex"),
     MFA_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
@@ -22,7 +23,6 @@ test("production preflight rejects missing, shared and demonstration secrets", (
     SMTP_PASSWORD: "private-mail-password",
     SMTP_FROM: "desk@example.com",
     OPERATOR_ALERT_EMAIL: "operations@example.com",
-    TLS_DIRECTORY: resolve(".local-backups/certs"),
   };
   assert.deepEqual(validateProduction(env), []);
   assert.ok(

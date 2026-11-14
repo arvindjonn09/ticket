@@ -46,6 +46,12 @@ import {
   DataPolicyService,
 } from "./modules/organisation/data-lifecycle.service.js";
 import { OperationsController } from "./operations.js";
+import { SlaController, SlaService } from "./modules/sla/sla.service.js";
+import {
+  InboundMailAdminController,
+  InboundMailService,
+  InboundMailWebhookController,
+} from "./modules/inbound-mail/inbound-mail.service.js";
 
 @Catch()
 class Errors implements ExceptionFilter {
@@ -109,6 +115,7 @@ class ApiController {
   constructor(
     private readonly auth: AuthService,
     private readonly tickets: TicketsService,
+    private readonly inbound: InboundMailService,
   ) {}
   @Get("auth/session") session(@Req() req: AuthRequest) {
     return req.auth.view;
@@ -124,6 +131,12 @@ class ApiController {
   }
   @Post("auth/mfa/verify") verifyMfa(@Req() req: AuthRequest) {
     return this.auth.verifyMfa(req.auth, req.body);
+  }
+  @Get("auth/notification-preference") notificationPreference(@Req() req: AuthRequest) {
+    return this.auth.notificationPreference(req.auth);
+  }
+  @Post("auth/notification-preference") saveNotificationPreference(@Req() req: AuthRequest) {
+    return this.auth.saveNotificationPreference(req.auth, req.body);
   }
   @Get("catalog") catalog(@Req() req: AuthRequest) {
     return this.tickets.catalog(req.auth);
@@ -145,6 +158,18 @@ class ApiController {
   }
   @Post("tickets/:id/state") state(@Req() req: AuthRequest, @Param("id") id: string) {
     return this.tickets.state(req.auth, id, req.body);
+  }
+  @Get("tickets/:id/email-categories") emailCategories(
+    @Req() req: AuthRequest,
+    @Param("id") id: string,
+  ) {
+    return this.inbound.emailCategories(req.auth, id);
+  }
+  @Post("tickets/:id/email-category") chooseEmailCategory(
+    @Req() req: AuthRequest,
+    @Param("id") id: string,
+  ) {
+    return this.inbound.chooseEmailCategory(req.auth, id, req.body);
   }
 }
 @Controller("admin")
@@ -197,6 +222,9 @@ class AdminController {
     AutomationController,
     DataPolicyController,
     OperationsController,
+    SlaController,
+    InboundMailWebhookController,
+    InboundMailAdminController,
   ],
   providers: [
     Database,
@@ -210,6 +238,8 @@ class AdminController {
     RecoveryService,
     AutomationService,
     DataPolicyService,
+    InboundMailService,
+    SlaService,
   ],
 })
 class AppModule {}
@@ -221,7 +251,7 @@ export async function createApp() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      bodyLimit: 150000,
+      bodyLimit: 8_000_000,
       trustProxy: process.env.TRUST_PROXY === "1" ? (_address, hop) => hop < 1 : false,
       logger:
         process.env.NODE_ENV === "test"

@@ -16,6 +16,7 @@
     "db:bootstrap": "tsx src/database-bootstrap.ts",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "mail:send-test": "node ../../scripts/send-test-email.mjs",
     "test": "vitest run --fileParallelism=false"
   },
   "dependencies": {
@@ -34,11 +35,13 @@
     "pg-boss": "^12.38.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "sanitize-html": "^2.18.2",
     "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/nodemailer": "^8.0.2",
+    "@types/sanitize-html": "^2.16.2",
     "prisma": "6.19.3",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",

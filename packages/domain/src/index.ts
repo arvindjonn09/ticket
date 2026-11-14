@@ -27,7 +27,7 @@ export function isGroupAgent(actor: Actor, ticket: Ticket): boolean {
   );
 }
 export function hasActiveGroup(actor: Actor): boolean {
-  return actor.role === "agent" && actor.departmentIds.length > 0;
+  return (actor.role === "agent" || actor.role === "admin") && actor.departmentIds.length > 0;
 }
 export function canReadTicket(actor: Actor, ticket: Ticket): boolean {
   if (actor.tenantId !== ticket.tenantId) return false;

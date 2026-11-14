@@ -460,6 +460,7 @@ export function TicketList() {
   const categoryId = params.get("categoryId") || "";
   const channel = params.get("channel") || "";
   const assignedToId = params.get("assignedToId") || "";
+  const cursor = params.get("cursor") || "";
   const catalog = useQuery({
     queryKey: ["catalog"],
     queryFn: () => api<Catalog>("/catalog"),
@@ -476,14 +477,20 @@ export function TicketList() {
     ...(categoryId ? { categoryId } : {}),
     ...(channel ? { channel } : {}),
     ...(assignedToId ? { assignedToId } : {}),
+    ...(cursor ? { cursor } : {}),
+    limit: "50",
   }).toString();
   const tickets = useQuery({
     queryKey: ["tickets", queryString],
-    queryFn: () => api<{ tickets: TicketSummary[] }>(`/tickets?${queryString}`),
+    queryFn: () =>
+      api<{ tickets: TicketSummary[]; nextCursor: string | null; limitReached: boolean }>(
+        `/tickets?${queryString}`,
+      ),
   });
   const records = tickets.data?.tickets || [];
   const update = (key: string, value: string) => {
     const next = new URLSearchParams(params);
+    next.delete("cursor");
     if (key === "assigned") next.delete("assignedToId");
     if (key === "assignedToId") next.delete("assigned");
     if (value) next.set(key, value);
@@ -700,6 +707,7 @@ export function TicketList() {
                     <th>{t("subject")}</th>
                     <th>{t("status")}</th>
                     <th>{t("priority")}</th>
+                    <th>{t("sla.timeToBreach")}</th>
                     <th>{t("team")}</th>
                     <th>{t("updated")}</th>
                   </tr>
@@ -729,6 +737,22 @@ export function TicketList() {
                           {ticket.priority}
                         </span>
                       </td>
+                      <td>
+                        {(() => {
+                          if (
+                            ["Resolved", "Complete", "Cancelled", "Rejected"].includes(ticket.state)
+                          )
+                            return t("sla.dueNone");
+                          const due = ticket.slaFirstRespondedAt
+                            ? ticket.slaResolutionDueAt
+                            : ticket.slaFirstResponseDueAt;
+                          if (!due) return t("sla.dueNone");
+                          const remaining = Date.parse(due) - Date.now();
+                          return remaining < 0
+                            ? t("sla.breached")
+                            : t("sla.dueIn", { minutes: Math.ceil(remaining / 60000) });
+                        })()}
+                      </td>
                       <td className="team-cell">
                         {ticket.departmentName}
                         <span className="table-caption">
@@ -747,7 +771,19 @@ export function TicketList() {
             </div>
             <div className="table-footer">
               {t("matching", { count: records.length })}
-              {records.length >= 200 && <span>{t("resultsLimit")}</span>}
+              {cursor && (
+                <button className="text-button" onClick={() => update("cursor", "")}>
+                  {t("firstPage")}
+                </button>
+              )}
+              {tickets.data?.nextCursor && (
+                <button
+                  className="text-button"
+                  onClick={() => update("cursor", tickets.data!.nextCursor!)}
+                >
+                  {t("nextPage")}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -984,6 +1020,7 @@ export function IncidentDetail() {
   const { t } = useTranslation();
   const session = useSession();
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const cache = useQueryClient();
   const [body, setBody] = useState("");
   const [audience, setAudience] = useState<"customer" | "internal">("customer");
@@ -993,6 +1030,31 @@ export function IncidentDetail() {
   const detail = useQuery({
     queryKey: ["ticket", id],
     queryFn: () => api<TicketDetail>(`/tickets/${encodeURIComponent(id!)}`),
+  });
+  const chooseCategory = searchParams.get("choose-category") === "1";
+  const emailCategories = useQuery({
+    queryKey: ["email-categories", id],
+    queryFn: () =>
+      api<{ categories: { id: string; name: string }[] }>(
+        `/tickets/${encodeURIComponent(id!)}/email-categories`,
+      ),
+    enabled: chooseCategory,
+  });
+  const categoryMutation = useMutation({
+    mutationFn: (categoryId: string) =>
+      api<TicketDetail>(
+        `/tickets/${encodeURIComponent(id!)}/email-category`,
+        {
+          method: "POST",
+          body: JSON.stringify({ revision: detail.data!.revision, categoryId }),
+        },
+        session.csrfToken,
+      ),
+    onSuccess: (ticket) => {
+      cache.setQueryData(["ticket", id], ticket);
+      void cache.invalidateQueries({ queryKey: ["tickets"] });
+      setSearchParams({}, { replace: true });
+    },
   });
   const mutation = useMutation({
     mutationFn: ({ action, data }: { action: string; data: Record<string, unknown> }) =>
@@ -1057,6 +1119,13 @@ export function IncidentDetail() {
           <span className="priority">{ticket.priority}</span>
         </div>
         <h1>{ticket.summary}</h1>
+        {ticket.channel === "Email" && <span className="ticket-channel">Via email</span>}
+        {isAgent && ticket.inboundSenderEmail && (
+          <p className="detail-byline">
+            Email sender: {ticket.inboundSenderEmail}
+            {ticket.inboundUnverified ? " (unverified)" : ""}
+          </p>
+        )}
         <div className="detail-byline">
           {t("reportedBy")}{" "}
           <Link to={`/users/${ticket.callerId}`}>
@@ -1073,6 +1142,41 @@ export function IncidentDetail() {
           </p>
         )}
       </div>
+      {chooseCategory && isRequester && ticket.channel === "Email" && !ticket.inboundUnverified && (
+        <section className="form-panel" aria-label="Choose ticket category">
+          <h2>Choose a category</h2>
+          {emailCategories.error && (
+            <p className="error" role="alert">
+              {emailCategories.error.message}
+            </p>
+          )}
+          {categoryMutation.error && (
+            <p className="error" role="alert">
+              {categoryMutation.error.message}
+            </p>
+          )}
+          <label>
+            Category
+            <select
+              aria-label="Category"
+              defaultValue=""
+              onChange={(event) => {
+                if (event.target.value) categoryMutation.mutate(event.target.value);
+              }}
+              disabled={categoryMutation.isPending}
+            >
+              <option value="" disabled>
+                Select a category
+              </option>
+              {emailCategories.data?.categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+      )}
       {mutation.error && (
         <Failure
           error={mutation.error}

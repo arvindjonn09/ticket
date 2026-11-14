@@ -40,7 +40,12 @@ import {
   type AuthContext,
   type AuthRequest,
 } from "../auth/auth.service.js";
-import { Database, lockConfiguration, type Tx } from "../../database.js";
+import {
+  Database,
+  lockConfiguration,
+  lockConfigurationExclusive,
+  type Tx,
+} from "../../database.js";
 import { encryptSecret } from "../../mfa.js";
 import { TicketsService } from "../tickets/tickets.service.js";
 
@@ -135,7 +140,8 @@ export class UsersService {
     if (admin && !canConfigureOrganisation({ ...auth, mfaVerified: auth.view.mfaVerified }))
       throw new ForbiddenException("MFA-verified administrator required");
     return this.db.withTenant(auth.tenantId, async (tx) => {
-      await lockConfiguration(tx, auth.tenantId);
+      if (admin) await lockConfigurationExclusive(tx, auth.tenantId);
+      else await lockConfiguration(tx, auth.tenantId);
       const user = await tx.user.findFirst({
         where: { tenantId: auth.tenantId, id: auth.id, active: true },
       });
@@ -489,7 +495,7 @@ export class UsersService {
       if (!found) throw new BadRequestException("Invitation is invalid or expired");
       const passwordHash = await hash(input.password, { type: argon2id });
       return await this.db.withTenant(found.tenant_id, async (tx) => {
-        await lockConfiguration(tx, found.tenant_id);
+        await lockConfigurationExclusive(tx, found.tenant_id);
         const changed = await tx.user.updateMany({
           where: {
             tenantId: found.tenant_id,

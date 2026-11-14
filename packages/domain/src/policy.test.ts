@@ -29,7 +29,9 @@ describe("incident policy", () => {
     expect(canConfigureOrganisation(admin)).toBe(true);
     expect(canConfigureOrganisation({ ...admin, mfaVerified: false })).toBe(false);
     expect(canConfigureOrganisation({ ...agent, mfaVerified: true })).toBe(false);
-    expect(canReadTicket(admin, ticket)).toBe(false);
+    expect(canReadTicket(admin, ticket)).toBe(true);
+    expect(canReadTicket({ ...admin, departmentIds: [] }, ticket)).toBe(false);
+    expect(canReadTicket(admin, { ...ticket, sensitive: true })).toBe(false);
     expect(canClaimTicket(admin, ticket)).toBe(false);
     expect(effectiveDepartment("base", null)).toBe("base");
     expect(effectiveDepartment("base", "override")).toBe("override");

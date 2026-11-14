@@ -331,6 +331,111 @@ describe.skipIf(!enabled)("first incident slice — real PostgreSQL/runtime RLS"
       (await inject("POST", `/tickets/${incident.id}/claim`, employee, { revision: 0 })).statusCode,
     ).toBe(403);
   });
+  it("stores personal non-critical notification preferences with strict values", async () => {
+    expect((await inject("GET", "/auth/notification-preference", employee)).json()).toEqual({
+      mode: "immediate",
+    });
+    expect(
+      (await inject("POST", "/auth/notification-preference", employee, { mode: "daily" })).json(),
+    ).toEqual({ mode: "daily" });
+    expect((await inject("GET", "/auth/notification-preference", employee)).json()).toEqual({
+      mode: "daily",
+    });
+    expect(
+      (await inject("POST", "/auth/notification-preference", employee, { mode: "everything-off" }))
+        .statusCode,
+    ).toBe(400);
+  });
+  it("uses keyset pages and full-text search for records older than the first 200", async () => {
+    const category = await owner.category.findUniqueOrThrow({ where: { id: categoryId } });
+    const tenant = await owner.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+    const maximum = await owner.ticket.aggregate({
+      where: { tenantId, type: "incident" },
+      _max: { sequence: true },
+    });
+    const firstSequence = (maximum._max.sequence ?? 0) + 1;
+    const historicalRequester = await owner.user.create({
+      data: {
+        tenantId,
+        name: "Unique Historical Requester",
+        email: `history-${randomUUID()}@test.invalid`,
+        role: "employee",
+        passwordHash: "disabled",
+      },
+    });
+    const now = Date.now();
+    const records = Array.from({ length: 201 }, (_, index) => {
+      const sequence = index + firstSequence;
+      const old = index === 0;
+      return {
+        tenantId,
+        type: "incident",
+        sequence,
+        number: `${tenant.incidentPrefix}${String(sequence).padStart(4, "0")}`,
+        summary: `Archive fixture ${sequence}`,
+        description: old
+          ? "legacyneedle appears only in this older ticket description"
+          : "ordinary archival fixture",
+        state: "Open",
+        priority: "P3",
+        severity: "3",
+        categoryId,
+        departmentId: category.departmentId,
+        callerId: employee.view.user.id,
+        submittedById: employee.view.user.id,
+        ...(old ? { requestedForId: historicalRequester.id } : {}),
+        createdAt: new Date(now - (old ? 30 * 86400000 : 1000)),
+        updatedAt: new Date(now + (old ? 0 : sequence * 1000)),
+      };
+    });
+    await owner.ticket.createMany({ data: records });
+    await owner.counter.upsert({
+      where: { tenantId_type: { tenantId, type: "incident" } },
+      create: { tenantId, type: "incident", sequence: firstSequence + records.length - 1 },
+      update: { sequence: firstSequence + records.length - 1 },
+    });
+    const searched = await inject("GET", "/tickets?scope=mine&search=legacyneedle", employee);
+    expect(searched.statusCode, searched.body).toBe(200);
+    expect(searched.json().tickets).toHaveLength(1);
+    expect(searched.json().tickets[0].summary).toBe(records[0]!.summary);
+    const byNumber = await inject(
+      "GET",
+      `/tickets?scope=mine&search=${records[0]!.number}`,
+      employee,
+    );
+    expect(
+      byNumber
+        .json()
+        .tickets.some((ticket: { summary: string }) => ticket.summary === records[0]!.summary),
+    ).toBe(true);
+    const byName = await inject(
+      "GET",
+      "/tickets?scope=mine&search=Unique%20Historical%20Requester",
+      employee,
+    );
+    expect(
+      byName
+        .json()
+        .tickets.some((ticket: { summary: string }) => ticket.summary === records[0]!.summary),
+    ).toBe(true);
+
+    const first = (await inject("GET", "/tickets?scope=mine&limit=50", employee)).json();
+    expect(first.tickets).toHaveLength(50);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = (
+      await inject(
+        "GET",
+        `/tickets?scope=mine&limit=50&cursor=${encodeURIComponent(first.nextCursor)}`,
+        employee,
+      )
+    ).json();
+    expect(second.tickets).toHaveLength(50);
+    expect(
+      second.tickets.some((ticket: { id: string }) =>
+        first.tickets.some((prior: { id: string }) => prior.id === ticket.id),
+      ),
+    ).toBe(false);
+  });
   it("claims once under contention and returns safe current values on stale revisions", async () => {
     const responses = await Promise.all(
       [agent, secondAgent].map((identity) =>

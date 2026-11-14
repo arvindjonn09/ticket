@@ -1,4 +1,9 @@
 name: astrama-production
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 x-api-env: &runtime
   NODE_ENV: production
   APP_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN}
@@ -20,6 +25,7 @@ x-mail-env: &mail
 services:
   db:
     image: postgres:16-bookworm
+    logging: *default-logging
     environment:
       POSTGRES_DB: astrama
       POSTGRES_USER: astrama_owner
@@ -32,8 +38,8 @@ services:
       retries: 20
     restart: unless-stopped
   setup:
-    image: astrama-setup:${RELEASE_TAG:-local}
-    build: { context: ., dockerfile: infra/Dockerfile, target: api }
+    image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-setup:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
+    logging: *default-logging
     command:
       ["sh", "-c", "pnpm db:bootstrap && pnpm db:migrate && node apps/api/dist/storage-init.js"]
     environment:
@@ -42,8 +48,8 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
     depends_on: { db: { condition: service_healthy }, storage: { condition: service_started } }
   api:
-    image: astrama-api:${RELEASE_TAG:-local}
-    build: { context: ., dockerfile: infra/Dockerfile, target: api-production }
+    image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-api:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
+    logging: *default-logging
     environment:
       <<: *runtime
       TRUST_PROXY: "1"
@@ -65,7 +71,8 @@ services:
     depends_on: { setup: { condition: service_completed_successfully } }
     restart: unless-stopped
   worker:
-    image: astrama-api:${RELEASE_TAG:-local}
+    image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-api:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
+    logging: *default-logging
     command: ["node", "dist/notification-worker.js"]
     environment:
       <<: [*runtime, *mail]
@@ -82,19 +89,28 @@ services:
     depends_on: { setup: { condition: service_completed_successfully } }
     restart: unless-stopped
   web:
-    image: astrama-web:${RELEASE_TAG:-local}
-    build: { context: ., dockerfile: infra/Dockerfile, target: web }
+    image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-web:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
+    logging: *default-logging
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
-      NGINX_ENVSUBST_FILTER: APP_DOMAIN
     ports: ["80:80", "443:443"]
-    volumes:
-      - ./infra/nginx.production.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ${TLS_DIRECTORY:?Set absolute TLS_DIRECTORY}:/etc/astrama-tls:ro
+    volumes: ["caddy_data:/data", "caddy_config:/config"]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test:
+        ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: { api: { condition: service_healthy } }
     restart: unless-stopped
   storage:
     image: rustfs/rustfs@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    logging: *default-logging
     command: ["/data"]
     environment:
       RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY}
@@ -105,6 +121,7 @@ services:
     restart: unless-stopped
   scanner:
     image: clamav/clamav@sha256:45fe5149fbee5a46509c9848ef20d0c354b7b2323c9369f285939a37cf33422a
+    logging: *default-logging
     volumes: ["signatures:/var/lib/clamav"]
     healthcheck:
       test: ["CMD", "clamdscan", "--ping", "1"]
@@ -114,12 +131,17 @@ services:
       retries: 20
     restart: unless-stopped
   monitor:
-    image: astrama-api:${RELEASE_TAG:-local}
+    image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-api:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
+    logging: *default-logging
     profiles: [operations]
     command: ["node", "dist/operations-check.js", "--notify"]
     environment:
       <<: [*runtime, *mail]
       OPERATOR_ALERT_EMAIL: ${OPERATOR_ALERT_EMAIL:-}
+      MONITOR_HOST_CHECKS: "1"
+      HOST_DISK_USAGE_PERCENT: ${HOST_DISK_USAGE_PERCENT:-}
+      TLS_CERTIFICATE_DAYS_REMAINING: ${TLS_CERTIFICATE_DAYS_REMAINING:-}
+      FORCE_BACKUP_FAILURE: ${FORCE_BACKUP_FAILURE:-0}
     read_only: true
     tmpfs: ["/tmp:size=16m,mode=1777"]
     cap_drop: [ALL]
@@ -128,3 +150,5 @@ volumes:
   database:
   files:
   signatures:
+  caddy_data:
+  caddy_config:

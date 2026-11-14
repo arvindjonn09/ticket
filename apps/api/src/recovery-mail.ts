@@ -1,5 +1,5 @@
 import { createTransport } from "nodemailer";
-import { Database, lockConfiguration } from "./database.js";
+import { Database } from "./database.js";
 import { decryptSecret } from "./mfa.js";
 import { RecoveryService } from "./recovery.js";
 
@@ -47,10 +47,9 @@ export class RecoveryMailer {
   async deliver(tenantId: string, id: string) {
     try {
       await this.db.withTenant(tenantId, async (tx) => {
-        await lockConfiguration(tx, tenantId);
         const [item] = await tx.$queryRaw<
           RecoveryMail[]
-        >`SELECT * FROM password_recoveries WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid AND status='pending' AND next_attempt_at<=now()`;
+        >`SELECT * FROM password_recoveries WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid AND status='pending' AND next_attempt_at<=now() FOR UPDATE`;
         if (!item) return;
         const user = await tx.user.findFirst({
           where: { tenantId, id: item.user_id, active: true },

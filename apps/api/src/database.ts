@@ -2,7 +2,10 @@ import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 export type Tx = Prisma.TransactionClient;
 export async function lockConfiguration(tx: Tx, tenantId: string) {
-  // ponytail: serializes tenant configuration/ticket operations; use shared or finer locks if measured load requires it.
+  // Ticket operations share a tenant lock; configuration changes take the exclusive counterpart.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`configuration:${tenantId}`}, 0))`;
+}
+export async function lockConfigurationExclusive(tx: Tx, tenantId: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`configuration:${tenantId}`}, 0))`;
 }
 @Injectable()

@@ -17,6 +17,7 @@ try {
   for (const [slug, name] of [
     ["harbour", "Harbour Services"],
     ["northstar", "Northstar Labs"],
+    ["smoke", "Astrama Mail Smoke"],
   ]) {
     const tenant = await db.tenant.upsert({
       where: { slug },
@@ -153,6 +154,56 @@ try {
         },
         update: {},
       });
+      if (slug === "smoke") {
+        const triage = departments[4]!;
+        const general = await tx.category.findFirstOrThrow({
+          where: { tenantId: tenant.id, name: "Not sure / General help" },
+        });
+        const it = departments[0]!;
+        const itCategory = categories[0]!;
+        await tx.user.upsert({
+          where: { tenantId_email: { tenantId: tenant.id, email: "sender@smoke.example.test" } },
+          create: {
+            tenantId: tenant.id,
+            email: "sender@smoke.example.test",
+            name: "Mail Smoke Sender",
+            role: "employee",
+            passwordHash,
+          },
+          update: { passwordHash },
+        });
+        await tx.inboundMailSettings.upsert({
+          where: { tenantId: tenant.id },
+          create: {
+            tenantId: tenant.id,
+            triageDepartmentId: triage.id,
+            triageCategoryId: general.id,
+          },
+          update: { triageDepartmentId: triage.id, triageCategoryId: general.id },
+        });
+        for (const [address, department, category, isGeneral] of [
+          ["help@smoke.example.test", triage, general, true],
+          ["it@smoke.example.test", it, itCategory, false],
+        ] as const) {
+          await tx.inboundMailAddress.upsert({
+            where: { address },
+            create: {
+              tenantId: tenant.id,
+              address,
+              departmentId: department.id,
+              categoryId: category.id,
+              isGeneral,
+            },
+            update: {
+              tenantId: tenant.id,
+              departmentId: department.id,
+              categoryId: category.id,
+              isGeneral,
+              active: true,
+            },
+          });
+        }
+      }
       for (const item of [
         {
           name: "Demo application access",

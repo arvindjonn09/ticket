@@ -10,9 +10,14 @@ import type { ExecutionContext } from "@nestjs/common";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hash, verify, argon2id } from "argon2";
-import { loginSchema, mfaVerifySchema, type SessionView } from "@astrama/contracts";
+import {
+  loginSchema,
+  mfaVerifySchema,
+  notificationPreferenceSchema,
+  type SessionView,
+} from "@astrama/contracts";
 import type { Actor } from "@astrama/domain";
-import { Database, lockConfiguration, type Tx } from "../../database.js";
+import { Database, lockConfigurationExclusive, type Tx } from "../../database.js";
 import { base32, decryptSecret, encryptSecret, verifyTotp } from "../../mfa.js";
 export type AuthContext = Actor & { sessionId: string; view: SessionView };
 export type AuthRequest = FastifyRequest & { auth: AuthContext };
@@ -64,7 +69,7 @@ export class AuthService {
     const token = randomBytes(32).toString("base64url");
     const csrf = randomBytes(32).toString("base64url");
     const result = await this.db.withTenant(row.tenant_id, async (tx) => {
-      await lockConfiguration(tx, row.tenant_id);
+      await lockConfigurationExclusive(tx, row.tenant_id);
       await this.lockMfa(tx, row.id);
       const user = await tx.user.findUniqueOrThrow({ where: { id: row.id } });
       const tenant = await tx.tenant.findFirst({ where: { id: row.tenant_id, active: true } });
@@ -280,6 +285,43 @@ export class AuthService {
         ? new HttpException("MFA temporarily limited. Try again shortly.", 429)
         : new UnauthorizedException("Invalid or already used authenticator code");
     return { ...auth.view, mfaVerified: true };
+  }
+  async notificationPreference(auth: AuthContext) {
+    return this.db.withTenant(auth.tenantId, async (tx) => {
+      const user = await tx.user.findFirst({
+        where: { tenantId: auth.tenantId, id: auth.id, active: true },
+      });
+      if (!user) throw new UnauthorizedException("Active user required");
+      const preference = await tx.notificationPreference.findUnique({
+        where: { tenantId_userId: { tenantId: auth.tenantId, userId: auth.id } },
+      });
+      return { mode: preference?.mode ?? "immediate" };
+    });
+  }
+  async saveNotificationPreference(auth: AuthContext, body: unknown) {
+    const input = notificationPreferenceSchema.parse(body);
+    return this.db.withTenant(auth.tenantId, async (tx) => {
+      const user = await tx.user.findFirst({
+        where: { tenantId: auth.tenantId, id: auth.id, active: true },
+      });
+      if (!user) throw new UnauthorizedException("Active user required");
+      const preference = await tx.notificationPreference.upsert({
+        where: { tenantId_userId: { tenantId: auth.tenantId, userId: auth.id } },
+        create: { tenantId: auth.tenantId, userId: auth.id, mode: input.mode },
+        update: { mode: input.mode },
+      });
+      const deferred = await tx.notificationDelivery.findMany({
+        where: { tenantId: auth.tenantId, recipientId: auth.id, status: "deferred" },
+        select: { id: true },
+      });
+      if (input.mode === "off" && deferred.length) {
+        await tx.notificationDelivery.updateMany({
+          where: { id: { in: deferred.map((row) => row.id) } },
+          data: { status: "skipped" },
+        });
+      }
+      return { mode: preference.mode };
+    });
   }
 }
 @Injectable()

@@ -93,6 +93,10 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       ["employee@delivery.test", "employee"],
       ["agent@delivery.test", "agent"],
       ["outsider@delivery.test", "employee"],
+      ["queue-owner@delivery.test", "agent"],
+      ["substitute@delivery.test", "agent"],
+      ["admin@delivery.test", "admin"],
+      ["other-agent@delivery.test", "agent"],
     ])
       await owner.user.create({
         data: { tenantId, email: email!, name: role!, role: role!, passwordHash },
@@ -109,8 +113,35 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
     const group = await owner.department.create({
       data: { tenantId, name: "Support", isTriage: true },
     });
-    const staff = await owner.user.findFirstOrThrow({ where: { tenantId, role: "agent" } });
-    await owner.membership.create({ data: { tenantId, departmentId: group.id, userId: staff.id } });
+    const queueOwner = await owner.user.findFirstOrThrow({
+      where: { tenantId, email: "queue-owner@delivery.test" },
+    });
+    const substitute = await owner.user.findFirstOrThrow({
+      where: { tenantId, email: "substitute@delivery.test" },
+    });
+    await owner.department.update({
+      where: { id: group.id },
+      data: { queueOwnerId: queueOwner.id, substituteId: substitute.id },
+    });
+    for (const email of [
+      "agent@delivery.test",
+      "queue-owner@delivery.test",
+      "substitute@delivery.test",
+    ])
+      await owner.membership.create({
+        data: {
+          tenantId,
+          departmentId: group.id,
+          userId: (await owner.user.findFirstOrThrow({ where: { tenantId, email } })).id,
+        },
+      });
+    const otherGroup = await owner.department.create({ data: { tenantId, name: "Other group" } });
+    const otherAgent = await owner.user.findFirstOrThrow({
+      where: { tenantId, email: "other-agent@delivery.test" },
+    });
+    await owner.membership.create({
+      data: { tenantId, departmentId: otherGroup.id, userId: otherAgent.id },
+    });
     const category = await owner.category.create({
       data: { tenantId, departmentId: group.id, name: "Help" },
     });
@@ -153,6 +184,7 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
     for (const id of [tenantId, otherId].filter(Boolean))
       for (const table of [
         "notification_deliveries",
+        "automation_settings",
         "attachments",
         "approvals",
         "approval_delegations",
@@ -260,6 +292,70 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
     expect(
       await owner.notificationDelivery.count({
         where: { tenantId, eventId: fresh.id, recipientId: employee.id },
+      }),
+    ).toBe(0);
+  }, 30000);
+  it("routes SLA warnings internally to the queue and breaches to the assignee plus responsible admin", async () => {
+    const queueOwner = await owner.user.findFirstOrThrow({
+      where: { tenantId, email: "queue-owner@delivery.test" },
+    });
+    const substitute = await owner.user.findFirstOrThrow({
+      where: { tenantId, email: "substitute@delivery.test" },
+    });
+    const responsibleAdmin = await owner.user.findFirstOrThrow({
+      where: { tenantId, email: "admin@delivery.test" },
+    });
+    const otherAgent = await owner.user.findFirstOrThrow({
+      where: { tenantId, email: "other-agent@delivery.test" },
+    });
+    await owner.$executeRaw`INSERT INTO automation_settings(tenant_id,responsible_admin_id) VALUES (${tenantId}::uuid,${responsibleAdmin.id}::uuid)`;
+
+    const warning = await owner.outbox.create({
+      data: {
+        tenantId,
+        ticketId,
+        event: "sla.warning",
+        payload: { kind: "sla", audience: "internal", target: "first_response", stage: "warning" },
+      },
+    });
+    await worker.deliver({ tenantId, eventId: warning.id });
+    expect(
+      (
+        await owner.notificationDelivery.findMany({
+          where: { tenantId, eventId: warning.id, status: "sent" },
+        })
+      )
+        .map((delivery) => delivery.recipientId)
+        .sort(),
+    ).toEqual([queueOwner.id, substitute.id].sort());
+
+    await owner.ticket.update({ where: { id: ticketId }, data: { assignedToId: agent.id } });
+    const breach = await owner.outbox.create({
+      data: {
+        tenantId,
+        ticketId,
+        event: "sla.breach",
+        payload: { kind: "sla", audience: "internal", target: "resolution", stage: "breach" },
+      },
+    });
+    await worker.deliver({ tenantId, eventId: breach.id });
+    expect(
+      (
+        await owner.notificationDelivery.findMany({
+          where: { tenantId, eventId: breach.id, status: "sent" },
+        })
+      )
+        .map((delivery) => delivery.recipientId)
+        .sort(),
+    ).toEqual([agent.id, responsibleAdmin.id].sort());
+    expect(
+      await owner.notificationDelivery.count({
+        where: {
+          tenantId,
+          eventId: { in: [warning.id, breach.id] },
+          recipientId: { in: [employee.id, otherAgent.id] },
+          status: "sent",
+        },
       }),
     ).toBe(0);
   }, 30000);

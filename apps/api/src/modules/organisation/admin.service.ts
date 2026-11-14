@@ -18,7 +18,7 @@ import {
   type AdminConfig,
   type Group,
 } from "@astrama/contracts";
-import { Database, lockConfiguration, type Tx } from "../../database.js";
+import { Database, lockConfigurationExclusive, type Tx } from "../../database.js";
 import type { AuthContext } from "../auth/auth.service.js";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -61,7 +61,7 @@ export class AdminService {
     if (!canConfigureOrganisation({ ...auth, mfaVerified: auth.view.mfaVerified }))
       throw new ForbiddenException("MFA-verified administrator required");
     return this.db.withTenant(auth.tenantId, async (tx) => {
-      await lockConfiguration(tx, auth.tenantId);
+      await lockConfigurationExclusive(tx, auth.tenantId);
       const actor = await tx.user.findFirst({
         where: { tenantId: auth.tenantId, id: auth.id, active: true, role: "admin" },
       });

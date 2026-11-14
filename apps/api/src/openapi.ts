@@ -18,6 +18,25 @@ type Route = {
 const routes: Route[] = [
   { method: "get", path: "/health", summary: "API health", public: true },
   {
+    method: "get",
+    path: "/auth/notification-preference",
+    summary: "Read personal non-critical notification preference",
+    response: "notificationPreferenceViewSchema",
+  },
+  {
+    method: "post",
+    path: "/auth/notification-preference",
+    summary: "Set personal non-critical notification preference",
+    body: "notificationPreferenceSchema",
+    response: "notificationPreferenceViewSchema",
+  },
+  {
+    method: "post",
+    path: "/inbound-mail/webhook",
+    summary: "Accept a signed test-provider inbound email",
+    public: true,
+  },
+  {
     method: "post",
     path: "/auth/forgot-password",
     summary: "Request a time-limited password reset; generic response",
@@ -41,6 +60,56 @@ const routes: Route[] = [
     path: "/admin/automation",
     summary: "Save organisation business calendar and automation policy",
     body: "automationSettingsSchema",
+  },
+  {
+    method: "get",
+    path: "/admin/sla",
+    summary: "Read proposed organisation SLA targets and calendar",
+    response: "slaSettingsViewSchema",
+  },
+  {
+    method: "post",
+    path: "/admin/sla",
+    summary: "Save organisation SLA targets for new tickets",
+    body: "slaSettingsSchema",
+    response: "slaSettingsViewSchema",
+  },
+  {
+    method: "get",
+    path: "/admin/inbound-mail",
+    summary: "Read inbound mail routing configuration",
+    response: "inboundMailViewSchema",
+  },
+  {
+    method: "post",
+    path: "/admin/inbound-mail",
+    summary: "Save inbound mail routing configuration",
+    body: "inboundMailSettingsSchema",
+    response: "inboundMailViewSchema",
+  },
+  {
+    method: "post",
+    path: "/admin/inbound-mail/secret",
+    summary: "Rotate signed inbound webhook secret",
+  },
+  {
+    method: "post",
+    path: "/admin/inbound-mail/addresses",
+    summary: "Add or update tenant inbound address mapping",
+    body: "inboundMailAddressSchema",
+  },
+  {
+    method: "post",
+    path: "/tickets/{id}/email-category",
+    summary: "Select an incident category for a verified email ticket",
+    body: "emailCategorySelectionSchema",
+    response: "ticketDetailSchema",
+  },
+  {
+    method: "get",
+    path: "/tickets/{id}/email-categories",
+    summary: "List categories available for a verified email ticket",
+    response: "emailCategoryViewSchema",
   },
   { method: "get", path: "/admin/data-policy", summary: "Read attachment and retention policy" },
   {

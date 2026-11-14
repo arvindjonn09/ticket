@@ -142,6 +142,21 @@ export function Profile({ session }: { session: SessionView }) {
       api("/auth/password", { method: "POST", body: JSON.stringify(body) }, session.csrfToken),
     onSuccess: () => updateSession(cache, null),
   });
+  const notificationPreference = useQuery({
+    queryKey: ["notification-preference", session.user.id],
+    queryFn: () => api<{ mode: "immediate" | "daily" | "off" }>("/auth/notification-preference"),
+    enabled: !id || id === session.user.id,
+  });
+  const saveNotificationPreference = useMutation({
+    mutationFn: (mode: string) =>
+      api(
+        "/auth/notification-preference",
+        { method: "POST", body: JSON.stringify({ mode }) },
+        session.csrfToken,
+      ),
+    onSuccess: () =>
+      void cache.invalidateQueries({ queryKey: ["notification-preference", session.user.id] }),
+  });
   const user = profile.data;
   return (
     <div className="page narrow-page">
@@ -192,6 +207,31 @@ export function Profile({ session }: { session: SessionView }) {
             ))}
             {!user.tickets?.length && <p className="muted">{t("noTicketHistory")}</p>}
           </section>
+          {user.id === session.user.id && (
+            <section className="form-panel">
+              <h2>{t("notificationPreferences")}</h2>
+              <p className="muted">{t("notificationPreferencesIntro")}</p>
+              <label>
+                {t("nonCriticalUpdates")}
+                <select
+                  value={notificationPreference.data?.mode ?? "immediate"}
+                  onChange={(event) => saveNotificationPreference.mutate(event.target.value)}
+                  disabled={
+                    notificationPreference.isPending || saveNotificationPreference.isPending
+                  }
+                >
+                  <option value="immediate">{t("notifyImmediately")}</option>
+                  <option value="daily">{t("dailyDigest")}</option>
+                  <option value="off">{t("turnOffUpdates")}</option>
+                </select>
+              </label>
+              {(notificationPreference.error || saveNotificationPreference.error) && (
+                <ErrorNotice
+                  error={notificationPreference.error || saveNotificationPreference.error}
+                />
+              )}
+            </section>
+          )}
           {user.id === session.user.id && (
             <section className="form-panel">
               <h2>{t("changePassword")}</h2>

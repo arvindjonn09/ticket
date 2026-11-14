@@ -28,3 +28,41 @@ describe("tenant business calendar", () => {
     ).toBe(2);
   });
 });
+
+import { addTargetMinutes, elapsedBusinessMinutes } from "./calendar.js";
+
+describe("business-hour SLA calendar", () => {
+  const calendar = {
+    timezone: "Australia/Sydney",
+    workingWeekdays: [1, 2, 3, 4, 5],
+    holidays: ["2026-11-13"],
+    workdayStart: "09:00",
+    workdayEnd: "17:00",
+  };
+
+  it("counts only open business time across a weekend and holiday", () => {
+    expect(
+      elapsedBusinessMinutes(
+        new Date("2026-11-12T00:00:00.000Z"), // Thursday 11:00 local
+        new Date("2026-11-16T02:00:00.000Z"), // Monday 13:00 local
+        calendar,
+      ),
+    ).toBe(10 * 60);
+  });
+
+  it("adds business minutes using the tenant timezone across DST", () => {
+    const due = addTargetMinutes(
+      new Date("2026-10-02T22:00:00.000Z"), // Saturday 08:00 local before DST
+      9 * 60,
+      calendar,
+      "business",
+    );
+    expect(due.toISOString()).toBe("2026-10-05T23:00:00.000Z");
+  });
+
+  it("uses continuous elapsed time for 24x7 targets", () => {
+    expect(
+      addTargetMinutes(new Date("2026-11-14T00:00:00.000Z"), 60, calendar, "24x7").toISOString(),
+    ).toBe("2026-11-14T01:00:00.000Z");
+  });
+});

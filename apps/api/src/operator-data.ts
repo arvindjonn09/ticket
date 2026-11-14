@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { retentionClasses } from "@astrama/contracts";
-import { lockConfiguration, type Tx } from "./database.js";
+import { lockConfigurationExclusive, type Tx } from "./database.js";
 import { readDataPolicy } from "./modules/organisation/data-lifecycle.service.js";
 
 const requestSchema = z
@@ -108,7 +108,7 @@ async function scoped<T>(db: PrismaClient, tenantId: string, work: (tx: Tx) => P
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id',${tenantId},true)`;
       // Read committed after this lock observes holds committed while waiting; S3 deletion cannot be rolled back.
-      await lockConfiguration(tx, tenantId);
+      await lockConfigurationExclusive(tx, tenantId);
       return work(tx);
     },
     {

@@ -37,6 +37,17 @@ async function signIn(page: Page, email: string) {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
+async function enrolSupportMfa(page: Page) {
+  await expect(
+    page.getByRole("heading", { name: "Set up your authenticator", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Begin setup", exact: true }).click();
+  await page.locator("details summary").click();
+  const secret = await page.getByLabel("Setup secret", { exact: true }).inputValue();
+  await page.getByLabel("Authenticator code", { exact: true }).fill(authenticatorCode(secret));
+  await page.getByRole("button", { name: "Verify authenticator", exact: true }).click();
+}
+
 test.beforeAll(async () => {
   test.setTimeout(30000);
   // Provision only identity fixtures. All routing setup is performed through the UI.
@@ -234,6 +245,7 @@ test("administrator configures groups and subcategory routing; only the destinat
   const desktopContext = await browser.newContext();
   const desktop = await desktopContext.newPage();
   await signIn(desktop, "desktop@browser.test");
+  await enrolSupportMfa(desktop);
   await expect(
     desktop.getByRole("heading", { name: /^(My tickets|Tickets)$/, exact: true }),
   ).toBeVisible();
@@ -249,6 +261,7 @@ test("administrator configures groups and subcategory routing; only the destinat
   const messagingContext = await browser.newContext();
   const messaging = await messagingContext.newPage();
   await signIn(messaging, "messaging@browser.test");
+  await enrolSupportMfa(messaging);
   await expect(
     messaging.getByRole("heading", { name: /^(My tickets|Tickets)$/, exact: true }),
   ).toBeVisible();

@@ -468,7 +468,11 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       >`SELECT * FROM pending_outbox_events()`;
       expect(pending.length).toBeGreaterThan(0);
       // Earlier integration fixtures may leave unrelated jobs in this disposable test database.
-      await owner.$executeRaw`DELETE FROM pgboss.job WHERE name='ticket-notification'`;
+      const [queue] = await owner.$queryRaw<{ exists: boolean }[]>`
+        SELECT to_regclass('pgboss.job') IS NOT NULL AS exists
+      `;
+      if (queue.exists)
+        await owner.$executeRaw`DELETE FROM pgboss.job WHERE name='ticket-notification'`;
       try {
         await worker.start();
         await expect

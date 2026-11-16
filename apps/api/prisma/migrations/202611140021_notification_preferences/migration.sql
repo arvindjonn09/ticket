@@ -12,12 +12,21 @@ CREATE POLICY tenant_isolation ON public.notification_preferences
   WITH CHECK (tenant_id::text=current_setting('app.tenant_id',true));
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.notification_preferences TO astrama_app;
 GRANT SELECT ON public.notification_preferences TO astrama_auth_reader;
+CREATE POLICY notification_preference_digest_lookup ON public.notification_preferences
+  FOR SELECT TO astrama_auth_reader USING (true);
 
 ALTER TABLE public.notification_deliveries DROP CONSTRAINT delivery_status_check;
 ALTER TABLE public.notification_deliveries ADD CONSTRAINT delivery_status_check
   CHECK (status IN ('pending','deferred','sent','skipped') AND attempts >= 0);
 CREATE INDEX notification_delivery_deferred_idx ON public.notification_deliveries(tenant_id,recipient_id,event_id)
   WHERE status='deferred';
+
+-- The digest function exposes only recipient IDs, so its NOLOGIN owner gets
+-- only deferred-delivery metadata under an explicit RLS policy.
+GRANT SELECT (tenant_id,recipient_id,status,event_id) ON public.notification_deliveries TO astrama_auth_reader;
+CREATE POLICY notification_digest_lookup ON public.notification_deliveries
+  FOR SELECT TO astrama_auth_reader USING (status='deferred');
+GRANT SELECT (tenant_id,id,created_at) ON public.outbox TO astrama_auth_reader;
 
 CREATE FUNCTION public.pending_notification_digests()
 RETURNS TABLE(tenant_id uuid,recipient_id uuid)

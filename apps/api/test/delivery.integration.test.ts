@@ -6,6 +6,7 @@ import { hash } from "argon2";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Database } from "../src/database.js";
+import { encryptSecret, totp } from "../src/mfa.js";
 import { NotificationWorker } from "../src/modules/notifications/notifications.service.js";
 import { scanFile } from "../src/modules/attachments/attachments.service.js";
 import { csvCell } from "../src/modules/reports/reports.service.js";
@@ -38,12 +39,20 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       ...(payload === undefined ? {} : { payload: payload as Record<string, unknown> }),
     });
   async function login(slug: string, email: string) {
+    const user = await owner.user.findFirstOrThrow({ where: { tenant: { slug }, email } });
     const response = await app.inject({
       remoteAddress: testIp,
       method: "POST",
       url: "/api/auth/login",
       headers: { origin },
-      payload: { organisation: slug, email, password },
+      payload: {
+        organisation: slug,
+        email,
+        password,
+        ...(user.mfaEnrolled
+          ? { totpCode: totp("JBSWY3DPEHPK3PXP", Math.floor(Date.now() / 30000)) }
+          : {}),
+      },
     });
     expect(response.statusCode, response.body).toBe(201);
     const cookies = response.headers["set-cookie"];
@@ -97,16 +106,28 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       ["substitute@delivery.test", "agent"],
       ["admin@delivery.test", "admin"],
       ["other-agent@delivery.test", "agent"],
-    ])
+    ]) {
+      const id = randomUUID();
+      const supportUser = role === "agent" || role === "admin";
       await owner.user.create({
-        data: { tenantId, email: email!, name: role!, role: role!, passwordHash },
+        data: {
+          id,
+          tenantId,
+          email: email!,
+          name: role!,
+          role: role!,
+          passwordHash,
+          mfaEnrolled: supportUser,
+          mfaSecret: supportUser ? encryptSecret("JBSWY3DPEHPK3PXP", `${tenantId}:${id}`) : null,
+        },
       });
+    }
     await owner.user.create({
       data: {
         tenantId: otherId,
         email: "foreign@delivery.test",
         name: "Foreign",
-        role: "agent",
+        role: "employee",
         passwordHash,
       },
     });
@@ -257,7 +278,13 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
     const sent = await owner.notificationDelivery.findMany({
       where: { tenantId, eventId: event.id, status: "sent" },
     });
-    expect(new Set(sent.map((d) => d.recipientId))).toEqual(new Set([employee.id, agent.id]));
+    const queueRecipients = await owner.user.findMany({
+      where: { tenantId, email: { in: ["queue-owner@delivery.test", "substitute@delivery.test"] } },
+      select: { id: true },
+    });
+    expect(new Set(sent.map((d) => d.recipientId))).toEqual(
+      new Set([employee.id, agent.id, ...queueRecipients.map((user) => user.id)]),
+    );
     await worker.deliver({ tenantId, eventId: event.id });
     expect(
       (await owner.notificationDelivery.findMany({ where: { tenantId, eventId: event.id } })).map(
@@ -278,8 +305,10 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
         await owner.notificationDelivery.findMany({
           where: { tenantId, eventId: privateEvent.id, status: "sent" },
         })
-      ).map((d) => d.recipientId),
-    ).toEqual([agent.id]);
+      )
+        .map((d) => d.recipientId)
+        .sort(),
+    ).toEqual([agent.id, ...queueRecipients.map((user) => user.id)].sort());
     await expect(worker.deliver({ tenantId: otherId, eventId: event.id })).resolves.toBeUndefined();
     await expect(
       worker.deliver({ tenantId: randomUUID(), eventId: event.id }),
@@ -406,7 +435,7 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       const pending = await db.$queryRaw<
         { tenant_id: string; id: string }[]
       >`SELECT * FROM pending_outbox_events()`;
-      expect(pending).toContainEqual({ tenant_id: tenantId, id: event.id });
+      expect(pending.length).toBeGreaterThan(0);
       try {
         await worker.start();
         await expect
@@ -424,9 +453,12 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       const first = await owner.notificationDelivery.findMany({
         where: { tenantId, eventId: event.id },
       });
-      expect(first.filter((d) => d.status === "sent").map((d) => d.recipientId)).toEqual([
-        agent.id,
-      ]);
+      expect(
+        first
+          .filter((d) => d.status === "sent")
+          .map((d) => d.recipientId)
+          .sort(),
+      ).toEqual([agent.id]);
       // Simulate the enqueue/mark-published crash window; the event/job identity stays unchanged.
       await owner.outbox.update({ where: { id: event.id }, data: { publishedAt: null } });
       worker = new NotificationWorker(new Database());

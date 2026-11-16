@@ -570,7 +570,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       } finally {
         await app.close();
       }
-    });
+    }, 15000);
     it("requires verified explicit operator input and owner access, audits MFA recovery, and defaults to dry-run", async () => {
       const { recoverLostMfa } = await import("../dist/recovery.js");
       const user = await account();

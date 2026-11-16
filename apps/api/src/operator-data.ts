@@ -181,11 +181,20 @@ export async function exportTenant(
           updatedAt: true,
         },
       });
-      for (const table of exportTables)
-        records[table] = await tx.$queryRawUnsafe(
-          `SELECT * FROM "${table}" WHERE tenant_id=$1::uuid`,
-          input.tenantId,
-        );
+      for (const table of exportTables) {
+        records[table] =
+          table === "tickets"
+            ? (
+                await tx.$queryRawUnsafe<{ record: Record<string, unknown> }[]>(
+                  `SELECT to_jsonb(ticket)-'search_vector' AS record FROM tickets ticket WHERE tenant_id=$1::uuid`,
+                  input.tenantId,
+                )
+              ).map(({ record }) => record)
+            : await tx.$queryRawUnsafe(
+                `SELECT * FROM "${table}" WHERE tenant_id=$1::uuid`,
+                input.tenantId,
+              );
+      }
       const attachments = await tx.attachment.findMany({
         where: { tenantId: input.tenantId },
         orderBy: { id: "asc" },

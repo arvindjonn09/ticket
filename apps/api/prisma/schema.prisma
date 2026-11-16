@@ -14,6 +14,14 @@ model Tenant {
   name                    String
   brandName               String                   @map("brand_name")
   active                  Boolean                  @default(true)
+  status                  String                   @default("active")
+  readOnlyReason          String?                  @map("read_only_reason")
+  trialEndsAt             DateTime?                @map("trial_ends_at") @db.Timestamptz(6)
+  readOnlySince           DateTime?                @map("read_only_since") @db.Timestamptz(6)
+  deleteAfter             DateTime?                @map("delete_after") @db.Timestamptz(6)
+  seatLimit               Int                      @default(100000) @map("seat_limit")
+  planId                  String?                  @map("plan_id")
+  starterTemplateVersion  String?                  @map("starter_template_version")
   incidentPrefix          String                   @default("INC") @map("incident_prefix")
   requestPrefix           String                   @default("SR") @map("request_prefix")
   revision                Int                      @default(0)
@@ -33,8 +41,25 @@ model Tenant {
   inboundMessages         InboundMessage[]
   inboundSenderRates      InboundSenderRate[]
   notificationPreferences NotificationPreference[]
+  lifecycleNotices        TenantLifecycleNotice[]
 
   @@map("tenants")
+}
+
+model TenantLifecycleNotice {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  periodStart DateTime @map("period_start") @db.Timestamptz(6)
+  kind        String
+  dueAt       DateTime @map("due_at") @db.Timestamptz(6)
+  attempts    Int      @default(0)
+  lastAttempt DateTime? @map("last_attempt") @db.Timestamptz(6)
+  sentAt      DateTime? @map("sent_at") @db.Timestamptz(6)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, periodStart, kind])
+  @@index([sentAt, dueAt])
+  @@map("tenant_lifecycle_notices")
 }
 
 model User {

@@ -152,6 +152,18 @@ export class NotificationWorker {
           include: { ticket: true },
         });
         if (!event || event.event.endsWith(".seeded")) return [];
+        const tenant = await tx.tenant.findUniqueOrThrow({
+          where: { id: data.tenantId },
+          select: { status: true },
+        });
+        if (tenant.status === "read_only")
+          return (
+            await tx.user.findMany({
+              where: { tenantId: data.tenantId, role: "admin", active: true },
+              select: { id: true },
+            })
+          ).map((user) => user.id);
+        if (!(tenant.status === "trial" || tenant.status === "active")) return [];
         const payload = event.payload as Record<string, unknown>;
         if (payload.kind === "sla") {
           const department = await tx.department.findUnique({
@@ -274,7 +286,21 @@ export class NotificationWorker {
           where: { tenantId: data.tenantId, id: recipientId, active: true },
           include: { memberships: { where: { department: { active: true } } } },
         });
-        if (!event || !user) return false;
+        const tenant = await tx.tenant.findUniqueOrThrow({
+          where: { id: data.tenantId },
+          select: { status: true },
+        });
+        if (
+          !event ||
+          !user ||
+          !(
+            tenant.status === "trial" ||
+            tenant.status === "active" ||
+            tenant.status === "read_only"
+          ) ||
+          (tenant.status === "read_only" && user.role !== "admin")
+        )
+          return false;
         const delivery = await tx.notificationDelivery.upsert({
           where: {
             tenantId_eventId_recipientId: {
@@ -536,9 +562,15 @@ export class NotificationWorker {
       try {
         await this.db.withTenant(group.tenant_id, async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`notification-digest:${group.tenant_id}:${group.recipient_id}`},0))`;
-          const user = await tx.user.findFirst({
-            where: { tenantId: group.tenant_id, id: group.recipient_id, active: true },
-          });
+          const [tenant, user] = await Promise.all([
+            tx.tenant.findUniqueOrThrow({
+              where: { id: group.tenant_id },
+              select: { status: true, slug: true },
+            }),
+            tx.user.findFirst({
+              where: { tenantId: group.tenant_id, id: group.recipient_id, active: true },
+            }),
+          ]);
           const preference = await tx.notificationPreference.findUnique({
             where: { tenantId_userId: { tenantId: group.tenant_id, userId: group.recipient_id } },
           });
@@ -552,17 +584,22 @@ export class NotificationWorker {
             select: { id: true },
           });
           if (!deliveries.length) return;
-          if (!user || preference?.mode === "off") {
+          if (
+            !user ||
+            preference?.mode === "off" ||
+            !(
+              tenant.status === "trial" ||
+              tenant.status === "active" ||
+              tenant.status === "read_only"
+            ) ||
+            (tenant.status === "read_only" && user.role !== "admin")
+          ) {
             await tx.notificationDelivery.updateMany({
               where: { id: { in: deliveries.map((d) => d.id) } },
               data: { status: "skipped" },
             });
             return;
           }
-          const tenant = await tx.tenant.findUniqueOrThrow({
-            where: { id: group.tenant_id },
-            select: { slug: true },
-          });
           const appOrigin = tenantOrigin(tenant.slug);
           const origin = new URL(appOrigin);
           await this.mail.sendMail({

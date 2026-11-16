@@ -362,6 +362,9 @@ void i18n.use(initReactI18next).init({
         loading: "Loading…",
         organisationNotFound: "Organisation not found",
         organisationNotFoundHint: "Check the address or contact your service desk administrator.",
+        trialBanner: "Your trial ends in {{count}} days. Check Billing to keep full access.",
+        readOnlyBanner:
+          "This organisation is read-only. You can view and export until {{date}}. Contact billing to restore access.",
         platformNotAvailable: "This Astrama workspace is not available yet.",
         retry: "Try again",
         error: "Something went wrong",

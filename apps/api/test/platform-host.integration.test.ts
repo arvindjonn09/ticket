@@ -82,6 +82,7 @@ describe.skipIf(!enabled)("hosted tenant routing", () => {
       payload: { organisation: first.slug, email: "host-0@test.invalid", password },
     });
     expect(login.statusCode, login.body).toBe(201);
+    const csrf = (login.json() as { csrfToken: string }).csrfToken;
     const cookieHeader = login.headers["set-cookie"];
     const cookie = (Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader)!.split(";")[0]!;
     expect(cookieHeader?.toString().toLowerCase()).not.toContain("domain=");
@@ -128,5 +129,54 @@ describe.skipIf(!enabled)("hosted tenant routing", () => {
       (await app.inject({ url: `/api/internal/tls-allowed?domain=${inactiveSlug}.astrama.test` }))
         .statusCode,
     ).toBe(404);
+
+    for (const status of ["active", "trial", "read_only"] as const) {
+      await owner.tenant.update({
+        where: { id: first.id },
+        data:
+          status === "trial"
+            ? {
+                status,
+                trialEndsAt: new Date(Date.now() + 86400000),
+                readOnlySince: null,
+                deleteAfter: null,
+                readOnlyReason: null,
+              }
+            : status === "read_only"
+              ? {
+                  status,
+                  trialEndsAt: null,
+                  readOnlySince: new Date(),
+                  deleteAfter: new Date(Date.now() + 45 * 86400000),
+                  readOnlyReason: "trial_ended",
+                }
+              : {
+                  status,
+                  trialEndsAt: null,
+                  readOnlySince: null,
+                  deleteAfter: null,
+                  readOnlyReason: null,
+                },
+      });
+      const session = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: { host: firstHost, origin: `https://${firstHost}`, cookie },
+      });
+      expect(session.statusCode).toBe(200);
+      expect((session.json() as { tenant: { status: string } }).tenant.status).toBe(status);
+      const write = await app.inject({
+        method: "POST",
+        url: "/api/auth/notification-preference",
+        headers: {
+          host: firstHost,
+          origin: `https://${firstHost}`,
+          cookie,
+          "x-csrf-token": csrf,
+        },
+        payload: { mode: "daily" },
+      });
+      expect(write.statusCode).toBe(status === "read_only" ? 403 : 201);
+    }
   }, 120000);
 });

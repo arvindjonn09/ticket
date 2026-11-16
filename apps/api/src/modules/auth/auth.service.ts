@@ -126,18 +126,40 @@ export class AuthService {
       await this.tenantSettings(row.tenant_id),
     );
   }
-  private tenantSettings(tenantId: string) {
-    return this.db.withTenant(tenantId, (tx) =>
+  private async tenantSettings(tenantId: string) {
+    const tenant = await this.db.withTenant(tenantId, (tx) =>
       tx.tenant.findUniqueOrThrow({
         where: { id: tenantId },
-        select: { timezone: true, locale: true, primaryColour: true },
+        select: {
+          timezone: true,
+          locale: true,
+          primaryColour: true,
+          status: true,
+          trialEndsAt: true,
+          deleteAfter: true,
+          seatLimit: true,
+        },
       }),
     );
+    return {
+      ...tenant,
+      status: tenant.status as "trial" | "active" | "read_only" | "deleted",
+      trialEndsAt: tenant.trialEndsAt?.toISOString() ?? null,
+      deleteAfter: tenant.deleteAfter?.toISOString() ?? null,
+    };
   }
   private view(
     row: AuthRow,
     csrf: string,
-    settings: { timezone: string; locale: string; primaryColour: string },
+    settings: {
+      timezone: string;
+      locale: string;
+      primaryColour: string;
+      status: "trial" | "active" | "read_only" | "deleted";
+      trialEndsAt: string | null;
+      deleteAfter: string | null;
+      seatLimit: number;
+    },
   ): SessionView {
     return {
       user: {
@@ -354,6 +376,17 @@ export class SessionGuard implements CanActivate {
       ].includes(request.url.split("?")[0]!)
     )
       throw new ForbiddenException("Verify your authenticator first");
+    if (
+      request.auth.view.tenant.status === "read_only" &&
+      !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
+      !["/api/auth/logout", "/api/auth/mfa/setup", "/api/auth/mfa/verify"].includes(
+        request.url.split("?")[0]!,
+      )
+    )
+      throw new ForbiddenException({
+        message: "This organisation is read-only. Contact billing to restore write access.",
+        billingPath: "/billing",
+      });
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
       this.auth.checkOrigin(request);
       const supplied = request.headers["x-csrf-token"];

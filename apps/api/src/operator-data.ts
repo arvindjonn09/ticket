@@ -24,6 +24,8 @@ const requestSchema = z
     expectedSlug: z.string().min(1).max(100),
     execute: z.boolean().default(false),
     offline: z.boolean().default(false),
+    lifecycle: z.boolean().default(false),
+    lifecycleNow: z.coerce.date().optional(),
   })
   .strict();
 export type OperatorRequest = z.input<typeof requestSchema>;
@@ -60,7 +62,17 @@ const tenantTables = [
   "automation_actions",
   "automation_settings",
   "invitation_mails",
+  "tenant_lifecycle_notices",
   "notification_deliveries",
+  "notification_preferences",
+  "inbound_messages",
+  "inbound_sender_rates",
+  "inbound_mail_addresses",
+  "inbound_mail_settings",
+  "password_recoveries",
+  "user_import_previews",
+  "sla_alerts",
+  "sla_settings",
   "attachments",
   "approval_delegations",
   "approvals",
@@ -80,6 +92,16 @@ const tenantTables = [
   "users",
   "tenant_data_policies",
 ] as const;
+
+class LifecycleDeletionNotDue extends Error {}
+
+function lifecycleDeletionDue(tenant: { status: string; deleteAfter: Date | null }, now: Date) {
+  return (
+    (tenant.status === "read_only" || tenant.status === "deleted") &&
+    tenant.deleteAfter !== null &&
+    tenant.deleteAfter <= now
+  );
+}
 export function operatorStorage() {
   if (!process.env.S3_ENDPOINT || !process.env.S3_BUCKET)
     throw new Error("Private storage configuration required");
@@ -278,7 +300,9 @@ export async function deleteTenant(
   const input = requestSchema.parse(body);
   await owner(db);
   const preview = await scoped(db, input.tenantId, async (tx) => {
-    await tenant(tx, input);
+    const organisation = await tenant(tx, input);
+    if (input.lifecycle && !lifecycleDeletionDue(organisation, input.lifecycleNow ?? new Date()))
+      throw new LifecycleDeletionNotDue();
     const policy = await readDataPolicy(tx, input.tenantId);
     if (policy.legalHold || retentionClasses.some((kind) => policy.retention[kind].legalHold))
       throw new Error("Legal hold blocks tenant deletion");
@@ -290,10 +314,12 @@ export async function deleteTenant(
     };
   });
   if (!input.execute) return preview;
-  if (!input.offline)
+  if (!input.offline && !input.lifecycle)
     throw new Error("Stop API ingress and workers, then assert --offline for tenant deletion");
   await scoped(db, input.tenantId, async (tx) => {
-    await tenant(tx, input);
+    const organisation = await tenant(tx, input);
+    if (input.lifecycle && !lifecycleDeletionDue(organisation, input.lifecycleNow ?? new Date()))
+      throw new LifecycleDeletionNotDue();
     const policy = await readDataPolicy(tx, input.tenantId);
     if (policy.legalHold || retentionClasses.some((kind) => policy.retention[kind].legalHold))
       throw new Error("Legal hold blocks tenant deletion");
@@ -303,7 +329,10 @@ export async function deleteTenant(
         select: { storageKey: true },
       })
     ).map((row) => row.storageKey);
-    await tx.tenant.update({ where: { id: input.tenantId }, data: { active: false } });
+    await tx.tenant.update({
+      where: { id: input.tenantId },
+      data: { active: false, ...(input.lifecycle ? { status: "deleted" } : {}) },
+    });
     await tx.session.deleteMany({ where: { tenantId: input.tenantId } });
     await tx.$executeRaw`INSERT INTO tenant_deletion_jobs(tenant_id,tenant_slug,object_keys) VALUES(${input.tenantId}::uuid,${input.expectedSlug},${JSON.stringify(keys)}::jsonb) ON CONFLICT(tenant_id) DO NOTHING`;
     await audit(tx, input, "delete", "requested", preview.tickets);
@@ -318,7 +347,8 @@ export async function deleteTenant(
       ...(await prefixKeys(storage, input.tenantId)),
     ]);
     await scoped(db, input.tenantId, async (tx) => {
-      await tenant(tx, input);
+      const organisation = await tenant(tx, input);
+      if (input.lifecycle && organisation.status !== "deleted") throw new LifecycleDeletionNotDue();
       const policy = await readDataPolicy(tx, input.tenantId);
       if (policy.legalHold || retentionClasses.some((kind) => policy.retention[kind].legalHold))
         throw new Error("Legal hold blocks tenant deletion");
@@ -343,6 +373,29 @@ export async function deleteTenant(
     return { ...preview, deleted: true };
   } catch (error) {
     await audit(db, input, "delete", "failed_retry_required", preview.tickets);
+    throw error;
+  }
+}
+
+export async function deleteExpiredTenant(db: PrismaClient, tenantId: string, now = new Date()) {
+  await owner(db);
+  const organisation = await db.tenant.findUnique({ where: { id: tenantId } });
+  if (!organisation || !lifecycleDeletionDue(organisation, now)) return false;
+  try {
+    await deleteTenant(db, {
+      tenantId,
+      expectedSlug: organisation.slug,
+      operator: "system:tenant-lifecycle",
+      reason: "Organisation remained read-only beyond its 45-day retention period",
+      evidence: "Scheduled lifecycle deletion after admin warnings at 30, 7 and 1 day",
+      execute: true,
+      offline: true,
+      lifecycle: true,
+      lifecycleNow: now,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof LifecycleDeletionNotDue) return false;
     throw error;
   }
 }

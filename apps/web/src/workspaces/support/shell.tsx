@@ -165,6 +165,32 @@ export function Shell({ session }: { session: SessionView }) {
           </span>
           <span className="organisation-name">{session.tenant.name}</span>
         </header>
+        {session.tenant.status === "read_only" && (
+          <div className="lifecycle-banner read-only" role="status">
+            {t("readOnlyBanner", {
+              date: session.tenant.deleteAfter
+                ? new Date(session.tenant.deleteAfter).toLocaleDateString(
+                    session.tenant.locale || "en",
+                    { dateStyle: "medium" },
+                  )
+                : "—",
+            })}
+          </div>
+        )}
+        {session.tenant.status === "trial" &&
+          session.user.role === "admin" &&
+          session.tenant.trialEndsAt && (
+            <div className="lifecycle-banner trial" role="status">
+              {t("trialBanner", {
+                count: Math.max(
+                  0,
+                  Math.ceil(
+                    (new Date(session.tenant.trialEndsAt).getTime() - Date.now()) / 86400000,
+                  ),
+                ),
+              })}
+            </div>
+          )}
         <main id="main-content">
           <Outlet context={session} />
         </main>

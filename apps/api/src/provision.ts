@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { slaSettingsSchema } from "@astrama/contracts";
 import { encryptSecret } from "./mfa.js";
 import { platformConfigError, tenantOrigin, validTenantSlug } from "./platform.js";
 
@@ -16,6 +17,7 @@ export const provisionSchema = z
       .refine((value) => validTenantSlug(value), "Reserved or invalid organisation slug"),
     name: z.string().trim().min(1).max(120),
     brandName: z.string().trim().min(1).max(120),
+    timezone: z.string().trim().min(1).max(100).default("Australia/Sydney"),
     admin: z
       .object({
         name: z.string().trim().min(1).max(120),
@@ -30,9 +32,39 @@ export const provisionSchema = z
   })
   .strict();
 
+const starterTemplateSchema = z.object({
+  version: z.string().min(1),
+  departments: z.array(z.object({ name: z.string(), isTriage: z.boolean() })),
+  categories: z.array(
+    z.object({ name: z.string(), department: z.string(), sensitive: z.boolean() }),
+  ),
+  sla: slaSettingsSchema,
+  emailIntake: z.literal(false),
+});
+
+export type ProvisionOptions = {
+  status?: "active" | "trial";
+  now?: Date;
+  seatLimit?: number;
+};
+
 /** New organisations only. This privileged command never searches or resets existing accounts. */
-export async function provisionOrganisation(body: unknown) {
+export async function provisionOrganisation(body: unknown, options: ProvisionOptions = {}) {
   const input = provisionSchema.parse(body);
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: input.timezone });
+  } catch {
+    throw new Error("timezone must be a valid IANA time zone");
+  }
+  const status = options.status ?? "active";
+  const seatLimit = options.seatLimit ?? Number(process.env.DEFAULT_TRIAL_SEAT_LIMIT ?? 25);
+  if (!Number.isSafeInteger(seatLimit) || seatLimit < 1 || seatLimit > 100_000)
+    throw new Error("seatLimit must be an integer between 1 and 100000");
+  const now = options.now ?? new Date();
+  const trialEndsAt = status === "trial" ? new Date(now.getTime() + 15 * 86400000) : null;
+  const starter = starterTemplateSchema.parse(
+    JSON.parse(await readFile(new URL("../prisma/starter-v1.json", import.meta.url), "utf8")),
+  );
   if (!process.env.MIGRATION_DATABASE_URL) throw new Error("MIGRATION_DATABASE_URL is required");
   const configError = platformConfigError();
   if (configError) throw new Error(configError);
@@ -49,7 +81,17 @@ export async function provisionOrganisation(body: unknown) {
     await db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
       await tx.tenant.create({
-        data: { id: tenantId, slug: input.slug, name: input.name, brandName: input.brandName },
+        data: {
+          id: tenantId,
+          slug: input.slug,
+          name: input.name,
+          brandName: input.brandName,
+          timezone: input.timezone,
+          status,
+          trialEndsAt,
+          seatLimit,
+          starterTemplateVersion: starter.version,
+        },
       });
       await tx.user.create({
         data: {
@@ -66,8 +108,26 @@ export async function provisionOrganisation(body: unknown) {
           revision: 1,
         },
       });
-      await tx.department.create({
-        data: { tenantId, name: "Service Desk Triage", isTriage: true },
+      const departments = new Map<string, string>();
+      for (const item of starter.departments) {
+        const department = await tx.department.create({
+          data: { tenantId, name: item.name, isTriage: item.isTriage },
+        });
+        departments.set(item.name, department.id);
+      }
+      for (const item of starter.categories) {
+        const departmentId = departments.get(item.department);
+        if (!departmentId) throw new Error("Starter template references an unknown department");
+        await tx.category.create({
+          data: { tenantId, name: item.name, departmentId, sensitive: item.sensitive },
+        });
+      }
+      await tx.slaSettings.create({
+        data: {
+          tenantId,
+          revision: starter.sla.revision,
+          settings: starter.sla,
+        },
       });
       await tx.invitationMail.create({ data: { tenantId, userId, invitationHash, encryptedUrl } });
       await tx.configAudit.create({
@@ -88,6 +148,9 @@ export async function provisionOrganisation(body: unknown) {
       slug: input.slug,
       adminEmail: input.admin.email,
       emailQueued: true,
+      status,
+      trialEndsAt: trialEndsAt?.toISOString() ?? null,
+      seatLimit,
       invitation: { url, expiresAt: expiresAt.toISOString() },
     };
   } finally {

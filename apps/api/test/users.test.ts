@@ -659,5 +659,23 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       expect(JSON.stringify(audits)).not.toContain("Changed-password-2026!");
       expect(JSON.stringify(audits)).not.toContain("token=");
     });
+    it("reserves seats for pending invitations and excludes system intake users", async () => {
+      await owner.tenant.update({ where: { id: foreign.tenantId }, data: { seatLimit: 2 } });
+      const invite = await service.create(foreign, input("seat-one@test.invalid"));
+      await expect(service.create(foreign, input("seat-two@test.invalid"))).rejects.toThrow(
+        "Seat limit reached",
+      );
+      const raw = token(invite);
+      await service.activate({
+        organisation: foreign.view.tenant.slug,
+        token: raw,
+        password: "Activated-seat-password-2026!",
+      });
+      expect(
+        await owner.user.count({
+          where: { tenantId: foreign.tenantId, active: true, role: { not: "system" } },
+        }),
+      ).toBe(2);
+    });
   },
 );

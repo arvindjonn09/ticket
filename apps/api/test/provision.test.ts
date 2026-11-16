@@ -33,6 +33,9 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
         if (!tenant) continue;
         await owner.invitationMail.deleteMany({ where: { tenantId: tenant.id } });
         await owner.configAudit.deleteMany({ where: { tenantId: tenant.id } });
+        await owner.slaSettings.deleteMany({ where: { tenantId: tenant.id } });
+        await owner.tenantLifecycleNotice.deleteMany({ where: { tenantId: tenant.id } });
+        await owner.category.deleteMany({ where: { tenantId: tenant.id } });
         await owner.department.deleteMany({ where: { tenantId: tenant.id } });
         await owner.user.deleteMany({ where: { tenantId: tenant.id } });
         await owner.tenant.delete({ where: { id: tenant.id } });
@@ -46,11 +49,18 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
         result = await provisionOrganisation(body);
       const tenant = await owner.tenant.findUniqueOrThrow({
         where: { slug: body.slug },
-        include: { users: true, departments: true },
+        include: { users: true, departments: true, categories: true, slaSettings: true },
       });
       expect(tenant.users).toHaveLength(1);
-      expect(tenant.departments).toHaveLength(1);
-      expect(tenant.departments[0]!.isTriage).toBe(true);
+      expect(tenant.status).toBe("active");
+      expect(tenant.seatLimit).toBe(25);
+      expect(tenant.starterTemplateVersion).toBe("1");
+      expect(tenant.departments).toHaveLength(5);
+      expect(tenant.categories).toHaveLength(5);
+      expect(tenant.slaSettings).not.toBeNull();
+      expect(tenant.departments.find((department) => department.isTriage)?.name).toBe(
+        "Service Desk Triage",
+      );
       const user = tenant.users[0]!;
       expect(user.email).toBe("admin@test.invalid");
       expect(user.active).toBe(false);
@@ -89,6 +99,18 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       expect(await owner.invitationMail.count({ where: { tenantId: tenant.id } })).toBe(1);
       expect(await owner.configAudit.count({ where: { tenantId: tenant.id } })).toBe(1);
     }, 30000);
+    it("applies a fixed 15-day trial, tenant time zone, and configured seat limit", async () => {
+      const { provisionOrganisation } = await import("../dist/provision.js");
+      const body = { ...input(), timezone: "Pacific/Auckland" };
+      const now = new Date("2026-11-17T00:00:00.000Z");
+      const result = await provisionOrganisation(body, { status: "trial", now, seatLimit: 8 });
+      const tenant = await owner.tenant.findUniqueOrThrow({ where: { slug: body.slug } });
+      expect(tenant.status).toBe("trial");
+      expect(tenant.timezone).toBe("Pacific/Auckland");
+      expect(tenant.seatLimit).toBe(8);
+      expect(tenant.trialEndsAt?.toISOString()).toBe("2026-12-02T00:00:00.000Z");
+      expect(result.trialEndsAt).toBe("2026-12-02T00:00:00.000Z");
+    });
     it("rejects invalid input before creating records and requires the explicit owner connection", async () => {
       const { provisionOrganisation } = await import("../dist/provision.js");
       const body = input();

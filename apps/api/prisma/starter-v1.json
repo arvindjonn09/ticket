@@ -1,0 +1,33 @@
+{
+  "version": "1",
+  "departments": [
+    { "name": "IT Support", "isTriage": false },
+    { "name": "Application Support", "isTriage": false },
+    { "name": "Infrastructure", "isTriage": false },
+    { "name": "Security", "isTriage": false },
+    { "name": "Service Desk Triage", "isTriage": true }
+  ],
+  "categories": [
+    { "name": "Devices & workplace", "department": "IT Support", "sensitive": false },
+    { "name": "Business applications", "department": "Application Support", "sensitive": false },
+    { "name": "Network & access", "department": "Infrastructure", "sensitive": false },
+    { "name": "Security concern", "department": "Security", "sensitive": true },
+    { "name": "Not sure / General help", "department": "Service Desk Triage", "sensitive": false }
+  ],
+  "sla": {
+    "revision": 0,
+    "workingWeekdays": [1, 2, 3, 4, 5],
+    "holidays": [],
+    "workdayStart": "09:00",
+    "workdayEnd": "17:00",
+    "triageFirstResponseMinutes": 60,
+    "targets": {
+      "P1": { "firstResponseMinutes": 60, "resolutionMinutes": 240, "calendar": "24x7" },
+      "P2": { "firstResponseMinutes": 240, "resolutionMinutes": 480, "calendar": "business" },
+      "P3": { "firstResponseMinutes": 480, "resolutionMinutes": 1440, "calendar": "business" },
+      "P4": { "firstResponseMinutes": 960, "resolutionMinutes": 2400, "calendar": "business" },
+      "P5": { "firstResponseMinutes": 2400, "resolutionMinutes": 9600, "calendar": "business" }
+    }
+  },
+  "emailIntake": false
+}

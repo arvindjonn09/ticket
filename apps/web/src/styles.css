@@ -216,6 +216,22 @@ svg {
   display: flex;
   min-height: 100dvh;
 }
+
+.lifecycle-banner {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.lifecycle-banner.trial {
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.lifecycle-banner.read-only {
+  background: #fff7ed;
+  color: #7c2d12;
+}
 .sidebar {
   width: 232px;
   background: var(--sidebar);

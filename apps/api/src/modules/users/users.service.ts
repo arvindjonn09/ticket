@@ -201,6 +201,30 @@ export class UsersService {
     if (!user) throw new NotFoundException("User not found");
     return user;
   }
+  private async requireSeat(tx: Tx, tenantId: string, excludingUserId?: string) {
+    const tenant = await tx.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { seatLimit: true },
+    });
+    const where = {
+      tenantId,
+      role: { not: "system" },
+      ...(excludingUserId ? { id: { not: excludingUserId } } : {}),
+    };
+    const [active, invited] = await Promise.all([
+      tx.user.count({ where: { ...where, active: true } }),
+      tx.user.count({
+        where: {
+          ...where,
+          active: false,
+          invitationHash: { not: null },
+          invitationExpiresAt: { gt: new Date() },
+        },
+      }),
+    ]);
+    if (active + invited >= tenant.seatLimit)
+      throw new ConflictException("Seat limit reached. Upgrade your plan in Billing first.");
+  }
   private revision(revision: number, user: User) {
     if (revision !== user.revision)
       throw new ConflictException({
@@ -277,6 +301,7 @@ export class UsersService {
     });
   }
   private async invite(tx: Tx, auth: AuthContext, user: User) {
+    if (!user.active) await this.requireSeat(tx, auth.tenantId, user.id);
     const token = randomBytes(32).toString("base64url"),
       expiresAt = new Date(Date.now() + 48 * 3600000);
     const updated = await tx.user.update({
@@ -313,6 +338,7 @@ export class UsersService {
     };
   }
   private async add(tx: Tx, auth: AuthContext, input: CreateUserInput) {
+    await this.requireSeat(tx, auth.tenantId);
     await this.manager(tx, auth.tenantId, input.managerId);
     const user = await tx.user.create({
       data: { tenantId: auth.tenantId, ...input, active: false, passwordHash: "!" },
@@ -497,6 +523,7 @@ export class UsersService {
       const passwordHash = await hash(input.password, { type: argon2id });
       return await this.db.withTenant(found.tenant_id, async (tx) => {
         await lockConfigurationExclusive(tx, found.tenant_id);
+        await this.requireSeat(tx, found.tenant_id, found.id);
         const changed = await tx.user.updateMany({
           where: {
             tenantId: found.tenant_id,

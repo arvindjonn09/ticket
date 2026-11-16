@@ -11,6 +11,7 @@ x-api-env: &runtime
   APP_BASE_DOMAIN: ${APP_BASE_DOMAIN:-astrama.test}
   PUBLIC_SITE_ORIGIN: ${PUBLIC_SITE_ORIGIN:-https://astrama.test}
   OPERATOR_ORIGIN: ${OPERATOR_ORIGIN:-https://ops.astrama.test}
+  DEFAULT_TRIAL_SEAT_LIMIT: ${DEFAULT_TRIAL_SEAT_LIMIT:-25}
   PORT: 4311
   DATABASE_URL: postgresql://astrama_app:${APP_DB_PASSWORD:?Set URL-safe APP_DB_PASSWORD}@db:5432/astrama
   MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set private stable MFA_ENCRYPTION_KEY}
@@ -90,6 +91,20 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 3
+    depends_on: { setup: { condition: service_completed_successfully } }
+    restart: unless-stopped
+  lifecycle:
+    image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-api:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
+    logging: *default-logging
+    command: ["node", "dist/tenant-lifecycle-worker.js"]
+    environment:
+      <<: [*runtime, *mail]
+      MIGRATION_DATABASE_URL: postgresql://astrama_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/astrama
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     depends_on: { setup: { condition: service_completed_successfully } }
     restart: unless-stopped
   web:

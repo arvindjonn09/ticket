@@ -2,13 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
-import type { Database } from "../src/database.js";
+import type { INestApplicationContext } from "@nestjs/common";
 import type { NotificationWorker } from "../src/modules/notifications/notifications.service.js";
+import { createNotificationWorker } from "./notification-worker.helper.js";
 
 describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL)(
   "launch safety — isolated PostgreSQL/SMTP recipients",
   () => {
-    let owner: PrismaClient, db: Database, worker: NotificationWorker;
+    let owner: PrismaClient, worker: NotificationWorker, workerContext: INestApplicationContext;
     let tenantId: string,
       groupId: string,
       categoryId: string,
@@ -68,11 +69,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       process.env.SMTP_PORT = String(address.port);
       process.env.SMTP_FROM = "desk@test.invalid";
       owner = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL });
-      const { Database } = await import("../dist/database.js");
-      const { NotificationWorker } =
-        await import("../dist/modules/notifications/notifications.service.js");
-      db = new Database();
-      worker = new NotificationWorker(db);
+      ({ context: workerContext, worker } = await createNotificationWorker());
       const tenant = await owner.tenant.create({
         data: {
           slug: `launch-safety-${randomUUID()}`,
@@ -169,7 +166,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       await owner.$executeRaw`INSERT INTO automation_settings(tenant_id,enabled,responsible_admin_id,revision) VALUES(${tenantId}::uuid,true,${users.admin!.id}::uuid,1)`;
     }, 30000);
     afterAll(async () => {
-      await db?.$disconnect();
+      await workerContext?.close();
       if (owner && tenantId) {
         await owner.user.updateMany({ where: { tenantId }, data: { managerId: null } });
         await owner.department.updateMany({
@@ -313,17 +310,19 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       ).toEqual([users.owner!.email, users.agent!.email].sort());
     }, 30000);
     it("commits SMTP failure evidence and retries the same event without changing its audience", async () => {
-      const { NotificationWorker } =
-          await import("../dist/modules/notifications/notifications.service.js"),
-        port = process.env.SMTP_PORT;
+      const port = process.env.SMTP_PORT;
       process.env.SMTP_PORT = "1";
-      const failing = new NotificationWorker(db);
+      const { context, worker: failing } = await createNotificationWorker();
       process.env.SMTP_PORT = port;
       const reminder = await event(),
         before = received.length;
-      await expect(failing.deliver({ tenantId, eventId: reminder.id })).rejects.toThrow(
-        "SMTP delivery failed",
-      );
+      try {
+        await expect(failing.deliver({ tenantId, eventId: reminder.id })).rejects.toThrow(
+          "SMTP delivery failed",
+        );
+      } finally {
+        await context.close();
+      }
       const failed = await owner.notificationDelivery.findFirstOrThrow({
         where: { tenantId, eventId: reminder.id, status: "pending" },
       });

@@ -47,7 +47,7 @@ describe.skipIf(!configured)(
             mfaEnrolled: ["admin", "agent"].includes(role),
             mfaSecret: ["admin", "agent"].includes(role)
               ? encryptSecret(
-                  "JBSWY3DPEHPK3PXP",
+                  "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
                   `${tenantId}:${id}`,
                   encryptionKey("ac".repeat(32)),
                 )

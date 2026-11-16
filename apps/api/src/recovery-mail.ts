@@ -1,3 +1,4 @@
+import { Injectable } from "@nestjs/common";
 import { createTransport } from "nodemailer";
 import { Database } from "./database.js";
 import { decryptSecret } from "./mfa.js";
@@ -14,6 +15,7 @@ type RecoveryMail = {
   password_hash: string;
 };
 /** A committed encrypted outbox. Sending and status update are serialized with account changes. */
+@Injectable()
 export class RecoveryMailer {
   private dispatching = false;
   private readonly mail = createTransport({
@@ -28,14 +30,17 @@ export class RecoveryMailer {
     greetingTimeout: 3000,
     socketTimeout: 5000,
   });
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly recovery: RecoveryService,
+  ) {}
   async dispatch() {
     if (this.dispatching) return;
     if (!process.env.SMTP_HOST || !process.env.SMTP_FROM || !process.env.APP_ORIGIN)
       throw new Error("Recovery mail configuration is incomplete");
     this.dispatching = true;
     try {
-      await new RecoveryService(this.db).dispatchRequests();
+      await this.recovery.dispatchRequests();
       const rows = await this.db.$queryRaw<
         { id: string; tenant_id: string }[]
       >`SELECT * FROM pending_recovery_mail()`;

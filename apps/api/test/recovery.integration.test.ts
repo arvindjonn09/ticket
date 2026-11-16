@@ -91,7 +91,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
           role: "admin",
           passwordHash,
           mfaEnrolled: true,
-          mfaSecret: encryptSecret("JBSWY3DPEHPK3PXP", `${tenantId}:${id}`),
+          mfaSecret: encryptSecret("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", `${tenantId}:${id}`),
           ...extra,
         },
       });

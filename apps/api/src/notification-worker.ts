@@ -1,8 +1,12 @@
 import "reflect-metadata";
-import { Database } from "./database.js";
+import { NestFactory } from "@nestjs/core";
 import { NotificationWorker } from "./modules/notifications/notifications.service.js";
+import { NotificationWorkerModule } from "./modules/notifications/notification-worker.module.js";
 
-const worker = new NotificationWorker(new Database());
+const context = await NestFactory.createApplicationContext(NotificationWorkerModule, {
+  logger: false,
+});
+const worker = context.get(NotificationWorker);
 await worker.start();
 console.info(JSON.stringify({ event: "notification.worker.started" }));
 let stopping = false;
@@ -11,7 +15,13 @@ for (const signal of ["SIGTERM", "SIGINT"])
     if (stopping) return;
     stopping = true;
     void worker.stop().then(
-      () => process.exit(0),
-      () => process.exit(1),
+      async () => {
+        await context.close();
+        process.exit(0);
+      },
+      async () => {
+        await context.close();
+        process.exit(1);
+      },
     );
   });

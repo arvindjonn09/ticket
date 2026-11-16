@@ -198,7 +198,10 @@ export class TicketsService {
       departmentId: ticket.departmentId,
       departmentName: ticket.department.name,
       callerId: ticket.callerId,
-      callerName: ticket.caller.name,
+      callerName:
+        ticket.inboundUnverified && ticket.inboundSenderEmail
+          ? ticket.inboundSenderEmail
+          : ticket.caller.name,
       assignedToId: ticket.assignedToId,
       assignedToName: ticket.assignedTo?.name ?? null,
       revision: ticket.revision,
@@ -978,7 +981,7 @@ export class TicketsService {
           severity: input.severity,
           untriaged: false,
         });
-        if (input.priority !== ticket.priority) {
+        if (input.priority !== ticket.priority || ticket.untriaged) {
           const snapshot = await makeSlaSnapshot(
             tx,
             actor.tenantId,
@@ -1074,9 +1077,7 @@ export class TicketsService {
         ...(typeof data.priority === "string"
           ? { priority: data.priority, severity: input.severity }
           : {}),
-        ...(input.action === "triage" && input.priority !== ticket.priority && slaAudit
-          ? { slaDueDates: slaAudit }
-          : {}),
+        ...(input.action === "triage" && slaAudit ? { slaDueDates: slaAudit } : {}),
         ...(input.assignedToId !== undefined ? { assignedToId: input.assignedToId } : {}),
       });
       return this.detail(tx, actor, await tx.ticket.findUniqueOrThrow({ where: { id }, include }));

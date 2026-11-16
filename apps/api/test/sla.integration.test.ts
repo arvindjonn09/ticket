@@ -253,6 +253,36 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       );
     });
 
+    it("replaces the triage first-response clock when triaged without changing priority", async () => {
+      const created = await tickets.create(
+        employee,
+        {
+          categoryId,
+          summary: "Same-priority triage SLA",
+          description: "The priority is already correct; triage confirms it.",
+        },
+        randomUUID(),
+      );
+      const before = await owner.ticket.findUniqueOrThrow({ where: { id: created.id } });
+      expect(before.untriaged).toBe(true);
+      expect(before.slaFirstResponseTargetMinutes).toBe(60);
+      const expected = await db.withTenant(tenantId, (tx) =>
+        makeSlaSnapshot(tx, tenantId, before.priority, before.createdAt, false),
+      );
+      const triaged = await tickets.manage(agent, created.id, {
+        revision: created.revision,
+        action: "triage",
+        reason: "Confirmed the existing priority",
+        priority: before.priority,
+        severity: before.severity,
+      });
+      const after = await owner.ticket.findUniqueOrThrow({ where: { id: created.id } });
+      expect(triaged.untriaged).toBe(false);
+      expect(after.slaFirstResponseTargetMinutes).toBe(expected.slaFirstResponseTargetMinutes);
+      expect(after.slaFirstResponseDueAt).toEqual(expected.slaFirstResponseDueAt);
+      expect(after.slaFirstResponseDueAt).not.toEqual(before.slaFirstResponseDueAt);
+    });
+
     it("emits warning and breach notifications once per target stage", async () => {
       const department = await owner.department.create({
         data: { tenantId, name: `SLA ${randomUUID()}` },

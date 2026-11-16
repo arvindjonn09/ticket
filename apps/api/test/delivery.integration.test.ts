@@ -4,10 +4,12 @@ import { randomUUID } from "node:crypto";
 const testIp = "fd00:" + randomUUID().replaceAll("-", "").match(/.{4}/g)!.slice(0, 7).join(":");
 import { hash } from "argon2";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
+import type { INestApplicationContext } from "@nestjs/common";
 import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Database } from "../src/database.js";
 import { encryptSecret, totp } from "../src/mfa.js";
-import { NotificationWorker } from "../src/modules/notifications/notifications.service.js";
+import type { NotificationWorker } from "../src/modules/notifications/notifications.service.js";
+import { createNotificationWorker } from "./notification-worker.helper.js";
 import { scanFile } from "../src/modules/attachments/attachments.service.js";
 import { csvCell } from "../src/modules/reports/reports.service.js";
 
@@ -19,7 +21,11 @@ const configured =
   process.env.CLAMAV_HOST &&
   process.env.SMTP_HOST;
 describe.skipIf(!configured)("scanned attachments and durable notification delivery", () => {
-  let app: NestFastifyApplication, owner: PrismaClient, db: Database, worker: NotificationWorker;
+  let app: NestFastifyApplication,
+    owner: PrismaClient,
+    db: Database,
+    worker: NotificationWorker,
+    workerContext: INestApplicationContext;
   let employee: Identity, agent: Identity, outsider: Identity, foreign: Identity;
   let ticketId: string, tenantId: string, otherId: string;
   const origin = "http://localhost:4310",
@@ -50,7 +56,7 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
         email,
         password,
         ...(user.mfaEnrolled
-          ? { totpCode: totp("JBSWY3DPEHPK3PXP", Math.floor(Date.now() / 30000)) }
+          ? { totpCode: totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", Math.floor(Date.now() / 30000)) }
           : {}),
       },
     });
@@ -118,7 +124,9 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
           role: role!,
           passwordHash,
           mfaEnrolled: supportUser,
-          mfaSecret: supportUser ? encryptSecret("JBSWY3DPEHPK3PXP", `${tenantId}:${id}`) : null,
+          mfaSecret: supportUser
+            ? encryptSecret("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", `${tenantId}:${id}`)
+            : null,
         },
       });
     }
@@ -180,10 +188,11 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
     });
     expect(response.statusCode, response.body).toBe(201);
     ticketId = response.json().id;
-    worker = new NotificationWorker(db);
+    ({ context: workerContext, worker } = await createNotificationWorker());
   }, 60000);
   afterAll(async () => {
     await app?.close();
+    await workerContext?.close();
     await db?.$disconnect();
     if (!owner) return;
     if (tenantId)
@@ -461,7 +470,8 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       ).toEqual([agent.id]);
       // Simulate the enqueue/mark-published crash window; the event/job identity stays unchanged.
       await owner.outbox.update({ where: { id: event.id }, data: { publishedAt: null } });
-      worker = new NotificationWorker(new Database());
+      await workerContext.close();
+      ({ context: workerContext, worker } = await createNotificationWorker());
       try {
         await worker.start();
         await expect

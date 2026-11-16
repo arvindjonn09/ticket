@@ -20,12 +20,13 @@ describe("test inbound mail adapter", () => {
   it("normalizes signatures and rejects stale or altered webhooks", () => {
     const input = TestInboundAdapter.normalize(message);
     const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = webhookSignature(timestamp, input, "test-secret");
-    expect(validWebhookSignature(timestamp, input, signature, "test-secret")).toBe(true);
+    const rawBody = JSON.stringify(input);
+    const signature = webhookSignature(timestamp, rawBody, "test-secret");
+    expect(validWebhookSignature(timestamp, rawBody, signature, "test-secret")).toBe(true);
     expect(
-      validWebhookSignature(timestamp, { ...input, subject: "altered" }, signature, "test-secret"),
+      validWebhookSignature(timestamp, rawBody.replace("{", "{ "), signature, "test-secret"),
     ).toBe(false);
-    expect(validWebhookSignature("1", input, signature, "test-secret")).toBe(false);
+    expect(validWebhookSignature("1", rawBody, signature, "test-secret")).toBe(false);
   });
 
   it("removes a reply token before resolving a tenant address and stores only its hash", () => {

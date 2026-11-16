@@ -69,23 +69,20 @@ export function senderHash(sender: string) {
   return createHash("sha256").update(sender.trim().toLowerCase()).digest("hex");
 }
 
-export function webhookSignature(timestamp: string, input: unknown, secret: string) {
-  const message = TestInboundAdapter.normalize(input);
-  return createHmac("sha256", secret)
-    .update(`${timestamp}.${JSON.stringify(message)}`)
-    .digest("hex");
+export function webhookSignature(timestamp: string, rawBody: string | Buffer, secret: string) {
+  return createHmac("sha256", secret).update(`${timestamp}.`).update(rawBody).digest("hex");
 }
 
 export function validWebhookSignature(
   timestamp: string,
-  input: InboundMessageInput,
+  rawBody: string | Buffer,
   signature: string,
   secret: string,
   now = Date.now(),
 ) {
   if (!/^\d{10}$/.test(timestamp) || Math.abs(now / 1000 - Number(timestamp)) > 300) return false;
   const received = Buffer.from(signature.replace(/^sha256=/, ""), "hex");
-  const expected = Buffer.from(webhookSignature(timestamp, input, secret), "hex");
+  const expected = Buffer.from(webhookSignature(timestamp, rawBody, secret), "hex");
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
 

@@ -2,18 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
-import {
-  DeleteObjectCommand,
-  HeadObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
+import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { argon2id, hash } from "argon2";
 import { vi } from "vitest";
 import { encryptSecret } from "../src/mfa.js";
 import {
   replyTokenHash,
-  TestInboundAdapter,
   webhookSignature,
 } from "../src/modules/inbound-mail/inbound-mail.adapter.js";
 
@@ -28,13 +22,14 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
   let otherTenantId: string;
   let departmentId: string;
   let categoryId: string;
-  let address = "help@inbound.test";
+  const address = "help@inbound.test";
   let secretA: string;
   let secretB: string;
   let employeeId: string;
   let agentId: string;
   let otherAgentId: string;
   let tenantSlug: string;
+  let summarizeCaller: (ticketId: string) => Promise<string>;
   let sequence = 100000;
 
   const message = (overrides: Record<string, unknown> = {}) => ({
@@ -52,17 +47,18 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
     options: { secret?: string; timestamp?: string; signature?: string } = {},
   ) {
     const timestamp = options.timestamp ?? String(Math.floor(Date.now() / 1000));
-    const normalized = TestInboundAdapter.normalize(input);
+    const rawBody = JSON.stringify(input);
     const signature =
-      options.signature ?? webhookSignature(timestamp, normalized, options.secret ?? secretA);
+      options.signature ?? webhookSignature(timestamp, rawBody, options.secret ?? secretA);
     return app.inject({
       method: "POST",
       url: "/api/inbound-mail/webhook",
       headers: {
         "x-astrama-timestamp": timestamp,
         "x-astrama-signature": signature,
+        "content-type": "application/json",
       },
-      payload: input,
+      payload: rawBody,
     });
   }
 
@@ -142,9 +138,19 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
     const { createApp } = await import("../dist/main.js");
     const { InboundMailService } =
       await import("../dist/modules/inbound-mail/inbound-mail.service.js");
+    const { TicketsService, ticketInclude } =
+      await import("../dist/modules/tickets/tickets.service.js");
     app = await createApp();
     await app.getHttpAdapter().getInstance().ready();
     service = app.get(InboundMailService);
+    const tickets = app.get(TicketsService);
+    summarizeCaller = async (ticketId) => {
+      const ticket = await owner.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        include: ticketInclude,
+      });
+      return tickets.summary(ticket).callerName;
+    };
 
     secretA = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
     secretB = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
@@ -286,6 +292,49 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
     expect((await deliver(input, { timestamp })).statusCode).toBe(401);
   });
 
+  it("authenticates the exact raw JSON bytes from the webhook request", async () => {
+    const input = message();
+    const rawBody = JSON.stringify(input, null, 2);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = webhookSignature(timestamp, rawBody, secretA);
+    const valid = await app.inject({
+      method: "POST",
+      url: "/api/inbound-mail/webhook",
+      headers: {
+        "content-type": "application/json",
+        "x-astrama-timestamp": timestamp,
+        "x-astrama-signature": signature,
+      },
+      payload: rawBody,
+    });
+    expect(valid.statusCode, valid.body).toBe(202);
+    const altered = await app.inject({
+      method: "POST",
+      url: "/api/inbound-mail/webhook",
+      headers: {
+        "content-type": "application/json",
+        "x-astrama-timestamp": timestamp,
+        "x-astrama-signature": signature,
+      },
+      payload: rawBody.replace("  ", " "),
+    });
+    expect(altered.statusCode).toBe(401);
+  });
+
+  it("returns the same unauthorized response for unknown addresses and missing tenant secrets", async () => {
+    const unknown = await deliver(message({ recipient: "unknown@inbound.test" }));
+    await owner.inboundMailSettings.update({
+      where: { tenantId: otherTenantId },
+      data: { encryptedWebhookSecret: null },
+    });
+    const unconfigured = await deliver(message({ recipient: "other@inbound.test" }), {
+      secret: secretB,
+    });
+    expect(unknown.statusCode).toBe(401);
+    expect(unconfigured.statusCode).toBe(401);
+    expect(unknown.json().message).toBe(unconfigured.json().message);
+  });
+
   it("deduplicates message IDs and ignores loops and automatic replies", async () => {
     const duplicate = message();
     expect((await deliver(duplicate)).statusCode).toBe(202);
@@ -302,6 +351,46 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
     expect(row.status).toBe("ignored");
   });
 
+  it("stores the twenty-first message as ignored without retaining its content", async () => {
+    const sender = `rate-${randomUUID()}@sender.test`;
+    const sent = [];
+    for (let count = 1; count <= 21; count++)
+      sent.push(
+        await deliver(message({ sender, subject: `message ${count}`, text: "private body" })),
+      );
+    expect(sent.every((response) => response.statusCode === 202)).toBe(true);
+    const limited = await owner.inboundMessage.findFirstOrThrow({
+      where: { tenantId, senderEmail: sender, subject: "" },
+    });
+    expect(limited.status).toBe("ignored");
+    expect(limited.lastError).toBe("rate_limited");
+    expect(limited.textBody).toBe("");
+    expect(limited.htmlBody).toBeNull();
+    expect(limited.attachments).toEqual([]);
+    expect(await owner.inboundMessage.count({ where: { tenantId, senderEmail: sender } })).toBe(21);
+  });
+
+  it("keeps the 150 KB login limit while allowing the larger webhook route", async () => {
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { origin: process.env.APP_ORIGIN, "content-type": "application/json" },
+      payload: JSON.stringify({
+        organisation: "x",
+        email: "x@example.test",
+        password: "x".repeat(200000),
+      }),
+    });
+    expect(login.statusCode).toBe(413);
+    const oversizedWebhook = await app.inject({
+      method: "POST",
+      url: "/api/inbound-mail/webhook",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify(message({ text: "x".repeat(200000) })),
+    });
+    expect(oversizedWebhook.statusCode).toBe(400);
+  });
+
   it("keeps a known but unauthenticated sender unverified and routes to triage", async () => {
     const input = message({
       authResults: { spf: "fail", dkim: "fail", dmarc: "fail" },
@@ -313,8 +402,22 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
     });
     const ticket = await owner.ticket.findFirstOrThrow({ where: { tenantId, id: row.ticketId! } });
     expect(ticket.inboundUnverified).toBe(true);
-    expect(ticket.callerId).not.toBe(employeeId);
+    const requester = await owner.user.findUniqueOrThrow({ where: { id: ticket.callerId } });
+    expect(requester).toMatchObject({ name: "Email intake", role: "system", active: false });
+    expect(ticket.submittedById).toBe(requester.id);
+    expect(await summarizeCaller(ticket.id)).toBe(input.sender);
     expect(ticket.departmentId).toBe(departmentId);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { origin: process.env.APP_ORIGIN },
+      payload: {
+        organisation: tenantSlug,
+        email: `email-intake@${tenantSlug}.invalid`,
+        password: "not-a-system-user-password",
+      },
+    });
+    expect(login.statusCode).toBe(401);
   });
 
   it.each([
@@ -428,6 +531,24 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
     });
     const duplicate = await owner.ticket.findUniqueOrThrow({ where: { id: row.ticketId! } });
     expect(duplicate.duplicateOfId).toBe(ticket.id);
+  });
+
+  it("accepts a customer reply on a Resolved ticket without treating it as closure confirmation", async () => {
+    const ticket = await makeTicket("Resolved");
+    const delivery = await makeDelivery(ticket.id, employeeId, "customer");
+    const reply = message({
+      inReplyTo: `<${delivery.id}@astrama.test>`,
+      text: "The issue is still happening.",
+    });
+    await deliver(reply);
+    await service.dispatch();
+    expect((await owner.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).state).toBe(
+      "Resolved",
+    );
+    const activity = await owner.activity.findFirstOrThrow({
+      where: { tenantId, ticketId: ticket.id, body: reply.text as string },
+    });
+    expect(activity.audience).toBe("customer");
   });
 
   it.skipIf(!process.env.S3_ENDPOINT || !process.env.CLAMAV_HOST)(

@@ -1,3 +1,4 @@
+import { Injectable } from "@nestjs/common";
 import { createTransport } from "nodemailer";
 import { PgBoss } from "pg-boss";
 import { z } from "zod";
@@ -18,6 +19,7 @@ import { replyTokenHash } from "../inbound-mail/inbound-mail.adapter.js";
 
 const jobSchema = z.object({ tenantId: z.string().uuid(), eventId: z.string().uuid() }).strict();
 const queue = "ticket-notification";
+@Injectable()
 export class NotificationWorker {
   private readonly boss: PgBoss;
   private readonly mail = createTransport({
@@ -34,22 +36,18 @@ export class NotificationWorker {
   });
   private timer?: NodeJS.Timeout;
   private dispatching = false;
-  private readonly invitations: InvitationMailer;
-  private readonly recovery: RecoveryMailer;
-  private readonly tickets: TicketsService;
-  private readonly automation: AutomationService;
-  private readonly sla: SlaService;
-  private readonly inbound: InboundMailService;
   private lastAutomationAt = 0;
   private lastSlaAt = 0;
   private lastDigestAt = 0;
-  constructor(private readonly db: Database) {
-    this.tickets = new TicketsService(db);
-    this.invitations = new InvitationMailer(db);
-    this.recovery = new RecoveryMailer(db);
-    this.automation = new AutomationService(db, this.tickets);
-    this.sla = new SlaService(db, this.tickets);
-    this.inbound = new InboundMailService(db, this.tickets);
+  constructor(
+    private readonly db: Database,
+    private readonly tickets: TicketsService,
+    private readonly invitations: InvitationMailer,
+    private readonly recovery: RecoveryMailer,
+    private readonly automation: AutomationService,
+    private readonly sla: SlaService,
+    private readonly inbound: InboundMailService,
+  ) {
     if (
       !process.env.DATABASE_URL ||
       !process.env.SMTP_HOST ||

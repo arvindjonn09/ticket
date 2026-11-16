@@ -354,25 +354,25 @@ export class InboundMailService {
     });
   }
 
-  async accept(input: unknown, timestamp: string, signature: string) {
+  async accept(input: unknown, timestamp: string, signature: string, rawBody?: Buffer) {
     const message = TestInboundAdapter.normalize(input);
     const destination = recipientAddress(message.recipient);
     const [lookup] = await this.db.$queryRaw<{ tenant_id: string; address_id: string | null }[]>`
       SELECT tenant_id,address_id FROM resolve_inbound_address(${destination.address})
     `;
-    if (!lookup) return { accepted: true };
+    if (!lookup) throw new UnauthorizedException("Invalid inbound request");
     return this.db.withTenant(lookup.tenant_id, async (tx) => {
       const settings = await tx.inboundMailSettings.findUnique({
         where: { tenantId: lookup.tenant_id },
       });
       if (!settings?.encryptedWebhookSecret)
-        throw new UnauthorizedException("Webhook is not configured");
+        throw new UnauthorizedException("Invalid inbound request");
       const secret = decryptSecret(
         settings.encryptedWebhookSecret,
         `inbound-mail:${lookup.tenant_id}`,
       );
-      if (!validWebhookSignature(timestamp, message, signature, secret))
-        throw new UnauthorizedException("Invalid inbound signature");
+      if (!rawBody || !validWebhookSignature(timestamp, rawBody, signature, secret))
+        throw new UnauthorizedException("Invalid inbound request");
       if (
         await tx.inboundMessage.findUnique({
           where: {
@@ -390,6 +390,7 @@ export class InboundMailService {
         })
       ).map((row) => row.address);
       const loop = isLoopMessage(message, ownAddresses, appHost);
+      let rateLimited = false;
       if (!loop) {
         const [limit] = await tx.$queryRaw<{ message_count: number }[]>`
           INSERT INTO inbound_sender_rates(tenant_id,sender_hash,window_started_at,message_count)
@@ -399,12 +400,14 @@ export class InboundMailService {
             message_count=CASE WHEN inbound_sender_rates.window_started_at<=now()-interval '1 hour' THEN 1 ELSE inbound_sender_rates.message_count+1 END
           RETURNING message_count
         `;
-        if ((limit?.message_count ?? 21) > 20) return { accepted: true };
+        rateLimited = (limit?.message_count ?? 21) > 20;
       }
-      const attachmentBytes = message.attachments.reduce(
-        (sum, file) => sum + Buffer.from(file.contentBase64, "base64").byteLength,
-        0,
-      );
+      const attachmentBytes = rateLimited
+        ? 0
+        : message.attachments.reduce(
+            (sum, file) => sum + Buffer.from(file.contentBase64, "base64").byteLength,
+            0,
+          );
       if (attachmentBytes > maxFileBytes)
         throw new BadRequestException("Email attachments exceed 5 MiB");
       await tx.inboundMessage.create({
@@ -418,13 +421,15 @@ export class InboundMailService {
           replyTokenHash: destination.token ? replyTokenHash(destination.token) : null,
           kind: message.kind,
           bounceFor: message.bounceFor,
-          subject: message.subject,
-          textBody: message.text,
-          htmlBody: message.html ? sanitizeHtml(message.html, allowedHtml) : null,
+          subject: rateLimited ? "" : message.subject,
+          textBody: rateLimited ? "" : message.text,
+          htmlBody: !rateLimited && message.html ? sanitizeHtml(message.html, allowedHtml) : null,
           headers: message.headers as Prisma.InputJsonValue,
           authResults: message.authResults as Prisma.InputJsonValue,
-          attachments: message.attachments as unknown as Prisma.InputJsonValue,
-          status: loop ? "ignored" : "queued",
+          attachments: (rateLimited ? [] : message.attachments) as unknown as Prisma.InputJsonValue,
+          status: loop || rateLimited ? "ignored" : "queued",
+          lastError: rateLimited ? "rate_limited" : null,
+          ...(rateLimited ? { processedAt: new Date() } : {}),
         },
       });
       return { accepted: true };
@@ -723,6 +728,26 @@ export class InboundMailService {
     const actor = await tx.user.findFirstOrThrow({
       where: { tenantId: input.tenantId, id: input.actorId, active: true },
     });
+    const requester = input.unverified
+      ? await tx.user.upsert({
+          where: {
+            tenantId_email: {
+              tenantId: input.tenantId,
+              email: `email-intake@${tenant.slug}.invalid`,
+            },
+          },
+          create: {
+            tenantId: input.tenantId,
+            name: "Email intake",
+            email: `email-intake@${tenant.slug}.invalid`,
+            passwordHash: "!disabled!",
+            role: "system",
+            active: false,
+          },
+          update: { name: "Email intake", role: "system", active: false },
+          select: { id: true },
+        })
+      : actor;
     const [counter] = await tx.$queryRaw<{ sequence: number }[]>`
       INSERT INTO counters(tenant_id,type,sequence) VALUES(${input.tenantId}::uuid,'incident',1)
       ON CONFLICT(tenant_id,type) DO UPDATE SET sequence=counters.sequence+1 RETURNING sequence
@@ -751,8 +776,8 @@ export class InboundMailService {
         severity: tenant.defaultSeverity,
         categoryId: input.categoryId,
         departmentId: input.departmentId,
-        callerId: input.actorId,
-        submittedById: input.actorId,
+        callerId: requester.id,
+        submittedById: requester.id,
         duplicateOfId: input.duplicateOfId,
         channel: "Email",
         untriaged: true,
@@ -983,11 +1008,11 @@ export class InboundMailWebhookController {
   @HttpCode(202)
   @Post("webhook")
   accept(
-    @Req() request: { body: unknown },
+    @Req() request: { body: unknown; rawBody?: Buffer },
     @Headers("x-astrama-timestamp") timestamp = "",
     @Headers("x-astrama-signature") signature = "",
   ) {
-    return this.inbound.accept(request.body, timestamp, signature);
+    return this.inbound.accept(request.body, timestamp, signature, request.rawBody);
   }
 }
 

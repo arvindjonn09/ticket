@@ -1,50 +1,9 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { OTP } from "otplib";
 
-const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-export function base32(bytes: Buffer): string {
-  let bits = 0,
-    value = 0,
-    result = "";
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      bits -= 5;
-      result += alphabet[(value >>> bits) & 31];
-    }
-  }
-  if (bits) result += alphabet[(value << (5 - bits)) & 31];
-  return result;
-}
-function decode(secret: string): Buffer {
-  let bits = 0,
-    value = 0;
-  const result: number[] = [];
-  for (const character of secret) {
-    const index = alphabet.indexOf(character);
-    if (index < 0) throw new Error("Invalid MFA secret");
-    value = (value << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      bits -= 8;
-      result.push((value >>> bits) & 255);
-    }
-  }
-  return Buffer.from(result);
-}
-// RFC 4226 dynamic truncation; RFC 6238 uses a 30-second moving counter.
+const otp = new OTP();
 export function totp(secret: string, step: number, digits = 6): string {
-  const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(step));
-  const digest = createHmac("sha1", decode(secret)).update(counter).digest();
-  const offset = digest[digest.length - 1]! & 15;
-  return String((digest.readUInt32BE(offset) & 0x7fffffff) % 10 ** digits).padStart(digits, "0");
+  return otp.generateSync({ secret, epoch: step * 30, digits });
 }
 export function verifyTotp(
   secret: string,
@@ -53,12 +12,14 @@ export function verifyTotp(
   now = Date.now(),
 ): number | null {
   if (!/^\d{6}$/.test(code)) return null;
-  const current = Math.floor(now / 30000);
-  for (const step of [current, current - 1, current + 1]) {
-    if (step > lastStep && timingSafeEqual(Buffer.from(totp(secret, step)), Buffer.from(code)))
-      return step;
-  }
-  return null;
+  const result = otp.verifySync({
+    secret,
+    token: code,
+    epoch: now / 1000,
+    epochTolerance: 30,
+    ...(lastStep >= 0 ? { afterTimeStep: lastStep } : {}),
+  });
+  return result.valid ? Math.floor(now / 30000) + result.delta : null;
 }
 export function encryptionKey(value = process.env.MFA_ENCRYPTION_KEY): Buffer {
   if (!/^[0-9a-f]{64}$/i.test(value ?? ""))

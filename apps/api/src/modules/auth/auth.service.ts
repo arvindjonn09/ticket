@@ -9,6 +9,7 @@ import {
 import type { ExecutionContext } from "@nestjs/common";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { generateSecret } from "otplib";
 import { hash, verify, argon2id } from "argon2";
 import {
   loginSchema,
@@ -18,7 +19,7 @@ import {
 } from "@astrama/contracts";
 import type { Actor } from "@astrama/domain";
 import { Database, lockConfigurationExclusive, type Tx } from "../../database.js";
-import { base32, decryptSecret, encryptSecret, verifyTotp } from "../../mfa.js";
+import { decryptSecret, encryptSecret, verifyTotp } from "../../mfa.js";
 export type AuthContext = Actor & { sessionId: string; view: SessionView };
 export type AuthRequest = FastifyRequest & { auth: AuthContext };
 export const tokenHash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -231,7 +232,7 @@ export class AuthService {
       if (user.mfaEnrolled) throw new ConflictException("MFA is already enrolled");
       if (user.mfaLockedUntil && user.mfaLockedUntil.getTime() > Date.now())
         throw new HttpException("MFA temporarily limited. Try again shortly.", 429);
-      const secret = base32(randomBytes(20));
+      const secret = generateSecret();
       await tx.user.update({
         where: { id: user.id },
         data: {

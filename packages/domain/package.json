@@ -15,7 +15,11 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/luxon": "^3.7.6",
     "typescript": "5.9.3",
     "vitest": "3.2.7"
+  },
+  "dependencies": {
+    "luxon": "3.7.2"
   }
 }

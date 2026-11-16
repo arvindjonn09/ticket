@@ -275,7 +275,8 @@ export class RequestsService {
       );
       const totalCostMinor = this.total(input.quantity, item.unitCostMinor),
         tenant = await tx.tenant.findUniqueOrThrow({ where: { id: actor.tenantId } });
-      const sla = await makeSlaSnapshot(tx, actor.tenantId, "P4", new Date(), true);
+      const priority = "P4" as const; // Plan §22 sets P4 as the service-request default.
+      const sla = await makeSlaSnapshot(tx, actor.tenantId, priority, new Date(), true);
       const [counter] = await tx.$queryRaw<
         { sequence: number }[]
       >`INSERT INTO counters(tenant_id,type,sequence) VALUES (${actor.tenantId}::uuid,'request',1) ON CONFLICT (tenant_id,type) DO UPDATE SET sequence=counters.sequence+1 RETURNING sequence`;
@@ -292,7 +293,7 @@ export class RequestsService {
           subcategoryId: route.subcategoryId,
           departmentId: route.departmentId,
           sensitive: route.sensitive,
-          priority: "P4",
+          priority,
           severity: tenant.defaultSeverity,
           ...sla,
           ...input,

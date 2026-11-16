@@ -1,8 +1,10 @@
+import { Injectable } from "@nestjs/common";
 import { createTransport } from "nodemailer";
 import { Database, lockConfiguration } from "./database.js";
 import { decryptSecret } from "./mfa.js";
 
 /** Durable invitation outbox; construction does not connect or send anything. */
+@Injectable()
 export class InvitationMailer {
   private dispatching = false;
   private readonly mail = createTransport({

@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
+import { Transform } from "node:stream";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import type { FastifyReply, FastifyRequest } from "fastify";
@@ -251,7 +252,7 @@ export async function createApp() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      bodyLimit: 8_000_000,
+      bodyLimit: 150_000,
       trustProxy: process.env.TRUST_PROXY === "1" ? (_address, hop) => hop < 1 : false,
       logger:
         process.env.NODE_ENV === "test"
@@ -268,6 +269,32 @@ export async function createApp() {
     }),
     { logger: false },
   );
+  const fastify = app.getHttpAdapter().getInstance();
+  fastify.addHook("onRoute", (route) => {
+    const methods = Array.isArray(route.method) ? route.method : [route.method];
+    if (route.url === "/api/inbound-mail/webhook" && methods.includes("POST"))
+      route.bodyLimit = 8_000_000;
+  });
+  fastify.addHook("preParsing", (request, _reply, payload, done) => {
+    if (request.method !== "POST" || request.url.split("?", 1)[0] !== "/api/inbound-mail/webhook") {
+      done(null, payload);
+      return;
+    }
+    const chunks: Buffer[] = [];
+    const capture = new Transform({
+      transform(chunk, _encoding, callback) {
+        const bytes = Buffer.from(chunk);
+        chunks.push(bytes);
+        callback(null, bytes);
+      },
+      flush(callback) {
+        (request as FastifyRequest & { rawBody?: Buffer }).rawBody = Buffer.concat(chunks);
+        callback();
+      },
+    });
+    payload.pipe(capture);
+    done(null, capture);
+  });
   await app.register(cookie);
   await app.register(multipart, {
     limits: { fileSize: maxFileBytes, files: 1, fields: 2, parts: 3 },

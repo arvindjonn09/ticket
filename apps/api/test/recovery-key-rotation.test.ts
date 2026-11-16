@@ -29,7 +29,11 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       await isolated.$executeRaw`CREATE TABLE password_recoveries(id uuid PRIMARY KEY,tenant_id uuid NOT NULL,user_id uuid NOT NULL,encrypted_url text)`;
       await isolated.$executeRaw`CREATE TABLE password_recovery_requests(id uuid PRIMARY KEY,encrypted_request text)`;
       const { encryptSecret, encryptionKey } = await import("../dist/mfa.js");
-      mfaCipher = encryptSecret("JBSWY3DPEHPK3PXP", `${tenant}:${user}`, encryptionKey(oldKey));
+      mfaCipher = encryptSecret(
+        "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+        `${tenant}:${user}`,
+        encryptionKey(oldKey),
+      );
       invitationCipher = encryptSecret(
         "https://fixture.invalid/#activate?token=fixture",
         `invitation:${foreignTenant}:${foreignUser}`,
@@ -89,7 +93,7 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
         { mfa_secret: string }[]
       >`SELECT mfa_secret FROM users WHERE id=${user}::uuid`;
       expect(decryptSecret(row!.mfa_secret, `${tenant}:${user}`, encryptionKey(newKey))).toBe(
-        "JBSWY3DPEHPK3PXP",
+        "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
       );
       expect(() =>
         decryptSecret(row!.mfa_secret, `${tenant}:${user}`, encryptionKey(oldKey)),

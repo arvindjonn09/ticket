@@ -7,8 +7,10 @@ import {
   Get,
   HttpException,
   Module,
+  NotFoundException,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -20,6 +22,7 @@ import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
+import { platformConfigError, platformMode, resolveHost, tlsDomainAllowed } from "./platform.js";
 import { AuthService, SessionGuard, type AuthRequest } from "./modules/auth/auth.service.js";
 import { Database } from "./database.js";
 import { TicketsService } from "./modules/tickets/tickets.service.js";
@@ -102,6 +105,20 @@ class PublicController {
     } catch {
       throw new HttpException({ status: "unavailable" }, 503);
     }
+  }
+  @Get("platform/host")
+  async platformHost(@Req() request: FastifyRequest) {
+    const target = await resolveHost(this.db, request.headers.host);
+    if (target.kind === "unknown") throw new NotFoundException("Organisation not found");
+    return target.kind === "tenant"
+      ? { mode: "hosted", kind: "tenant", tenantSlug: target.slug }
+      : { mode: platformMode(), kind: target.kind };
+  }
+  @Get("internal/tls-allowed")
+  async tlsAllowed(@Req() request: FastifyRequest, @Query("domain") domain: string | undefined) {
+    if (typeof domain !== "string" || !(await tlsDomainAllowed(this.db, domain, request.ip)))
+      throw new NotFoundException();
+    return { allowed: true };
   }
   @Post("auth/login") login(
     @Req() request: FastifyRequest,
@@ -245,9 +262,13 @@ class AdminController {
 })
 class AppModule {}
 export async function createApp() {
-  if (!process.env.APP_ORIGIN || new URL(process.env.APP_ORIGIN).origin !== process.env.APP_ORIGIN)
-    throw new Error("APP_ORIGIN must be an exact origin");
-  if (process.env.NODE_ENV === "production" && !process.env.APP_ORIGIN.startsWith("https://"))
+  const configError = platformConfigError();
+  if (configError) throw new Error(configError);
+  if (
+    platformMode() === "single" &&
+    process.env.NODE_ENV === "production" &&
+    !process.env.APP_ORIGIN!.startsWith("https://")
+  )
     throw new Error("Production requires an HTTPS origin");
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,

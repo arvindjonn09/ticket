@@ -42,9 +42,16 @@ cookies host-only; never set a parent-domain cookie.
 - Tenant selection from a host is an untrusted routing hint. Login, session
   validation, CSRF/origin checks, and data queries must all bind to the resolved
   active tenant and fail closed on mismatch.
-- Caddy's TLS authorization endpoint is internet-reachable and must be
-  rate-limited, neutral for denied hosts, and independent of user-supplied
-  forwarded-host headers.
+- Caddy calls the TLS authorization endpoint over the private service network;
+  the public Caddy route returns 404 for that path. Keep the API rate-limited
+  and independent of user-supplied forwarded-host headers.
+- Active-only on-demand certificate issuance means a never-provisioned
+  subdomain cannot complete its first HTTPS handshake, so its neutral HTML page
+  cannot render in a browser on that first visit. The API and SPA return the
+  same neutral not-found response when reached through an already-valid TLS
+  connection. A trusted first-visit page requires a wildcard certificate or a
+  broader certificate authorization policy; either changes the stated TLS
+  boundary and must be resolved before hosted launch.
 - Single mode remains available for customers requiring an isolated deployment;
   it uses the same versioned schema and migrations.
 - `APP_BASE_DOMAIN`, `PUBLIC_SITE_ORIGIN`, and `OPERATOR_ORIGIN` are deployment

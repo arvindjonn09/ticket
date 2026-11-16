@@ -1,6 +1,6 @@
 ﻿# Astrama delivery status
 
-Status updated 16 November 2026. Detailed dated delivery records are in [November history](history/2026-11.md).
+Status updated 17 November 2026. Detailed dated delivery records are in [November history](history/2026-11.md).
 
 ## Current position
 
@@ -18,6 +18,8 @@ Status updated 16 November 2026. Detailed dated delivery records are in [Novembe
 - **PR-C / PR-D:** implementation and focused PostgreSQL tests are complete. GitHub `verify` and `gitleaks` passed on `8982471`; PR-D adds the inactive `system` role via migration `202611160022_inbound_system_requester`.
 - **CR-E:** TOTP is now backed by otplib and business calendar calculations by Luxon, with the existing RFC/DST/holiday regressions passing. The Restic replacement for the custom encrypted backup/transport is still open; current recovery code remains the proven AES-256-GCM snapshot workflow until that migration can preserve its isolated restore drill.
 - **CR-F:** notification worker collaborators now resolve through Nest providers, and support routes, shared UI, ticket sidebar, and message composer are split into focused files. API/web typechecks and provider-construction test pass locally; GitHub `verify` and `gitleaks` passed on `8982471`.
+- **SA-01 — subdomain tenancy:** implemented host-based tenant resolution, cross-host session denial, host-bound origin checks, reserved slugs, tenant-specific invitation/recovery/notification links, and private Caddy on-demand TLS authorization. Fresh PostgreSQL integration and notification-link assertions pass. A first visit to a never-provisioned HTTPS subdomain cannot reach the neutral page because TLS correctly denies certificate issuance; ADR 005 records this launch limitation and the options that change the TLS boundary.
+- **SA-02 through SA-06:** pending, to be implemented and verified in packet order.
 
 ## Verification and delivery gates
 
@@ -25,6 +27,7 @@ Status updated 16 November 2026. Detailed dated delivery records are in [Novembe
 - PR-A fixed the notification digest role's narrow metadata privileges, tenant export's generated FTS column, outbox dispatch paging assumptions, and MFA enrollment in the organisation browser fixture. The earlier `390eba7` browser run exposed the last fixture issue; the corrected test passes across all three browsers.
 - Local verification on this worktree: API suite 115 passed / 4 skipped on a fresh isolated PostgreSQL database; delivery integration 4 passed / 1 skipped; formatting, lint (0 errors), typecheck, build, and the 215-package license gate passed. Browser matrix still needs GitHub CI on the new commits.
 - Staged and GitHub gitleaks scans passed. The raw workspace scan includes ignored `.env` and package-store content and is not the committed-tree scan used by CI.
+- SA-01 local verification: API 123 passed / 1 isolated bootstrap test skipped; domain 15 and web 5 passed; production scripts 3 passed; lint (0 errors), typecheck, workspace and production-image builds, Caddy/Compose validation, and the 215-package production licence gate passed. `pnpm audit --audit-level high` passed with 4 moderate advisories. GitHub browser-matrix verification remains pending for the SA-01 commit.
 - Do not claim production readiness until CX-07's clean-machine install, backup/restore, upgrade/rollback, offsite alert delivery, and monitoring evidence is recorded.
 
 ## Agent activity

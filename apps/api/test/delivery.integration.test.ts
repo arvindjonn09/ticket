@@ -283,7 +283,29 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
     const event = await owner.outbox.findFirstOrThrow({
       where: { tenantId, ticketId, event: "incident.created" },
     });
-    await worker.deliver({ tenantId, eventId: event.id });
+    const previousMode = process.env.PLATFORM_MODE,
+      previousBase = process.env.APP_BASE_DOMAIN;
+    process.env.PLATFORM_MODE = "hosted";
+    process.env.APP_BASE_DOMAIN = "astrama.test";
+    try {
+      await worker.deliver({ tenantId, eventId: event.id });
+      if (process.env.MAILPIT_URL) {
+        const mailbox = (await fetch(
+          `${process.env.MAILPIT_URL}/api/v1/search?query=${encodeURIComponent("to:agent@delivery.test")}`,
+        ).then((response) => response.json())) as { messages: { ID: string }[] };
+        const message = (await fetch(
+          `${process.env.MAILPIT_URL}/api/v1/message/${mailbox.messages[0]!.ID}`,
+        ).then((response) => response.json())) as { Text: string };
+        expect(message.Text).toContain(
+          `https://${(await owner.tenant.findUniqueOrThrow({ where: { id: tenantId } })).slug}.astrama.test/tickets/${ticketId}`,
+        );
+      }
+    } finally {
+      if (previousMode === undefined) delete process.env.PLATFORM_MODE;
+      else process.env.PLATFORM_MODE = previousMode;
+      if (previousBase === undefined) delete process.env.APP_BASE_DOMAIN;
+      else process.env.APP_BASE_DOMAIN = previousBase;
+    }
     const sent = await owner.notificationDelivery.findMany({
       where: { tenantId, eventId: event.id, status: "sent" },
     });
@@ -445,6 +467,8 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
         { tenant_id: string; id: string }[]
       >`SELECT * FROM pending_outbox_events()`;
       expect(pending.length).toBeGreaterThan(0);
+      // Earlier integration fixtures may leave unrelated jobs in this disposable test database.
+      await owner.$executeRaw`DELETE FROM pgboss.job WHERE name='ticket-notification'`;
       try {
         await worker.start();
         await expect

@@ -6,10 +6,14 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { encryptSecret } from "./mfa.js";
+import { platformConfigError, tenantOrigin, validTenantSlug } from "./platform.js";
 
 export const provisionSchema = z
   .object({
-    slug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$/),
+    slug: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$/)
+      .refine((value) => validTenantSlug(value), "Reserved or invalid organisation slug"),
     name: z.string().trim().min(1).max(120),
     brandName: z.string().trim().min(1).max(120),
     admin: z
@@ -30,15 +34,14 @@ export const provisionSchema = z
 export async function provisionOrganisation(body: unknown) {
   const input = provisionSchema.parse(body);
   if (!process.env.MIGRATION_DATABASE_URL) throw new Error("MIGRATION_DATABASE_URL is required");
-  const origin = process.env.APP_ORIGIN;
-  if (!origin || new URL(origin).origin !== origin)
-    throw new Error("APP_ORIGIN must be an exact origin");
+  const configError = platformConfigError();
+  if (configError) throw new Error(configError);
   const tenantId = randomUUID(),
     userId = randomUUID(),
     token = randomBytes(32).toString("base64url");
   const invitationHash = createHash("sha256").update(token).digest("hex"),
     expiresAt = new Date(Date.now() + 48 * 3600000);
-  const url = `${origin}/#activate?token=${encodeURIComponent(token)}&organisation=${encodeURIComponent(input.slug)}`;
+  const url = `${tenantOrigin(input.slug)}/#activate?token=${encodeURIComponent(token)}&organisation=${encodeURIComponent(input.slug)}`;
   const encryptedUrl = encryptSecret(url, `invitation:${tenantId}:${userId}`);
   const passwordHash = await hash(randomBytes(32), { type: argon2id });
   const db = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL, log: [] });

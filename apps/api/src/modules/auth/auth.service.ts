@@ -20,6 +20,7 @@ import {
 import type { Actor } from "@astrama/domain";
 import { Database, lockConfigurationExclusive, type Tx } from "../../database.js";
 import { decryptSecret, encryptSecret, verifyTotp } from "../../mfa.js";
+import { expectedRequestOrigin, platformMode, resolveHost } from "../../platform.js";
 export type AuthContext = Actor & { sessionId: string; view: SessionView };
 export type AuthRequest = FastifyRequest & { auth: AuthContext };
 export const tokenHash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -51,12 +52,18 @@ export class AuthService {
   private readonly dummy = hash(randomBytes(32), { type: argon2id });
   constructor(private readonly db: Database) {}
   checkOrigin(request: FastifyRequest) {
-    if (request.headers.origin !== process.env.APP_ORIGIN)
+    const expected = expectedRequestOrigin(request.headers.host);
+    if (!expected || request.headers.origin !== expected)
       throw new ForbiddenException("Invalid request origin");
   }
   async login(request: FastifyRequest, reply: FastifyReply) {
     this.checkOrigin(request);
     const input = loginSchema.parse(request.body);
+    if (platformMode() === "hosted") {
+      const host = await resolveHost(this.db, request.headers.host);
+      if (host.kind !== "tenant" || host.slug !== input.organisation.toLowerCase())
+        throw new UnauthorizedException("Invalid organisation or credentials");
+    }
     const account = `login:${input.organisation.toLowerCase()}:${input.email.toLowerCase()}`;
     const ip = `login:ip:${request.ip}`;
     // Reserve attempts before Argon2/SQL so concurrent bursts cannot bypass limits.
@@ -159,6 +166,11 @@ export class AuthService {
     >`SELECT * FROM auth_session_lookup(${tokenHash(token)})`;
     if (!row?.session_id || !row.csrf_token)
       throw new UnauthorizedException("Session expired. Sign in again.");
+    if (platformMode() === "hosted") {
+      const host = await resolveHost(this.db, request.headers.host);
+      if (host.kind !== "tenant" || host.tenantId !== row.tenant_id)
+        throw new UnauthorizedException("Session expired. Sign in again.");
+    }
     const changed = await this.db.withTenant(row.tenant_id, (tx) =>
       tx.session.updateMany({
         where: {

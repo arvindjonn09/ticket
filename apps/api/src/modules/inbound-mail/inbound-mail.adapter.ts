@@ -108,6 +108,7 @@ export function isLoopMessage(
     /^(bulk|junk|list|auto_reply)$/.test(precedence) ||
     ownAddresses.includes(message.sender) ||
     id.endsWith("@astrama.local") ||
-    (!!appHost && id.endsWith(`@${appHost.toLowerCase()}`))
+    (!!appHost &&
+      (id.endsWith(`@${appHost.toLowerCase()}`) || id.endsWith(`.${appHost.toLowerCase()}`)))
   );
 }

@@ -18,6 +18,7 @@ import { forgotPasswordSchema, resetPasswordSchema } from "@astrama/contracts";
 import { AuthService, reserveAuthAttempt, tokenHash } from "./modules/auth/auth.service.js";
 import { Database, lockConfiguration } from "./database.js";
 import { decryptSecret, encryptSecret } from "./mfa.js";
+import { tenantOrigin } from "./platform.js";
 
 @Injectable()
 export class RecoveryService {
@@ -64,6 +65,10 @@ export class RecoveryService {
           if (found) {
             await tx.$executeRaw`SELECT set_config('app.tenant_id',${found.tenant_id},true)`;
             await lockConfiguration(tx, found.tenant_id);
+            const tenant = await tx.tenant.findUniqueOrThrow({
+              where: { id: found.tenant_id },
+              select: { slug: true },
+            });
             const active = await tx.tenant.findFirst({
               where: { id: found.tenant_id, active: true },
             });
@@ -80,7 +85,7 @@ export class RecoveryService {
             if (user) {
               const token = randomBytes(32).toString("base64url"),
                 id = randomUUID();
-              const url = `${process.env.APP_ORIGIN}/#reset-password?organisation=${encodeURIComponent(input.organisation)}&token=${token}`;
+              const url = `${tenantOrigin(tenant.slug)}/#reset-password?organisation=${encodeURIComponent(input.organisation)}&token=${token}`;
               await tx.$executeRaw`UPDATE password_recoveries SET used_at=now(),status='skipped',encrypted_url=NULL,last_error='Superseded' WHERE tenant_id=${found.tenant_id}::uuid AND user_id=${user.id}::uuid AND used_at IS NULL`;
               await tx.$executeRaw`INSERT INTO password_recoveries(id,tenant_id,user_id,token_hash,password_hash,email,expires_at,encrypted_url) VALUES(${id}::uuid,${found.tenant_id}::uuid,${user.id}::uuid,${tokenHash(token)},${user.passwordHash},${user.email},${new Date(Date.now() + 30 * 60000)},${encryptSecret(url, `recovery:${found.tenant_id}:${user.id}:${id}`)})`;
               await tx.configAudit.create({

@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { createTransport } from "nodemailer";
 import { Database, lockConfiguration } from "./database.js";
 import { decryptSecret } from "./mfa.js";
+import { platformMode, tenantOrigin } from "./platform.js";
 
 /** Durable invitation outbox; construction does not connect or send anything. */
 @Injectable()
@@ -22,7 +23,11 @@ export class InvitationMailer {
   constructor(private readonly db: Database) {}
   async dispatch() {
     if (this.dispatching) return;
-    if (!process.env.SMTP_HOST || !process.env.SMTP_FROM || !process.env.APP_ORIGIN)
+    if (
+      !process.env.SMTP_HOST ||
+      !process.env.SMTP_FROM ||
+      (platformMode() === "single" && !process.env.APP_ORIGIN)
+    )
       throw new Error("Invitation mail configuration is incomplete");
     this.dispatching = true;
     try {
@@ -44,6 +49,10 @@ export class InvitationMailer {
         });
         if (!item) return;
         const user = item.user;
+        const tenant = await tx.tenant.findUniqueOrThrow({
+          where: { id: tenantId },
+          select: { slug: true },
+        });
         if (
           user.active ||
           user.invitationHash !== item.invitationHash ||
@@ -65,7 +74,7 @@ export class InvitationMailer {
           const url = decryptSecret(item.encryptedUrl, `invitation:${tenantId}:${user.id}`),
             parsed = new URL(url);
           if (
-            parsed.origin !== process.env.APP_ORIGIN ||
+            parsed.origin !== tenantOrigin(tenant.slug) ||
             parsed.pathname !== "/" ||
             !parsed.hash.startsWith("#activate?")
           )
@@ -75,7 +84,7 @@ export class InvitationMailer {
             to: user.email,
             subject: "Set up your service desk account",
             text: `Your organisation invited you to its service desk. Set your password using this single-use link:\n${url}\n\nThis invitation expires at ${user.invitationExpiresAt.toISOString()}. If you were not expecting it, contact your organisation administrator.`,
-            messageId: `<invitation-${item.id}@astrama.local>`,
+            messageId: `<invitation-${item.id}@${new URL(tenantOrigin(tenant.slug)).hostname}>`,
           });
           await tx.invitationMail.updateMany({
             where: { tenantId, id, status: "pending" },

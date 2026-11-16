@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { createHmac, randomUUID } from "node:crypto";
 import { encryptionKey } from "../../mfa.js";
 import { replyTokenHash } from "../inbound-mail/inbound-mail.adapter.js";
+import { platformMode, tenantOrigin } from "../../platform.js";
 
 const jobSchema = z.object({ tenantId: z.string().uuid(), eventId: z.string().uuid() }).strict();
 const queue = "ticket-notification";
@@ -52,7 +53,8 @@ export class NotificationWorker {
       !process.env.DATABASE_URL ||
       !process.env.SMTP_HOST ||
       !process.env.SMTP_FROM ||
-      !process.env.APP_ORIGIN
+      (platformMode() === "single" && !process.env.APP_ORIGIN) ||
+      (platformMode() === "hosted" && !process.env.APP_BASE_DOMAIN)
     )
       throw new Error("Notification worker configuration is incomplete");
     // Bootstrap owns schema creation; the worker has no database-wide CREATE privilege.
@@ -451,7 +453,12 @@ export class NotificationWorker {
         }
         try {
           // Deliberately exclude ticket text and internal notes from email. Open the authenticated UI for details.
-          const origin = new URL(process.env.APP_ORIGIN!);
+          const tenant = await tx.tenant.findUniqueOrThrow({
+            where: { id: data.tenantId },
+            select: { slug: true },
+          });
+          const appOrigin = tenantOrigin(tenant.slug);
+          const origin = new URL(appOrigin);
           const token =
             event.ticket.inboundReplyAddress && !slaEvent
               ? createHmac("sha256", encryptionKey())
@@ -493,8 +500,8 @@ export class NotificationWorker {
                 ? "Service desk configuration needs attention"
                 : `${event.ticket.number}: service desk update`,
             text: inboundAck
-              ? `Your request ${event.ticket.number} was received. Sign in to choose its category:\n${process.env.APP_ORIGIN}${path}`
-              : `There is an update in your organisation's service desk. Sign in to view it:\n${process.env.APP_ORIGIN}${path}`,
+              ? `Your request ${event.ticket.number} was received. Sign in to choose its category:\n${appOrigin}${path}`
+              : `There is an update in your organisation's service desk. Sign in to view it:\n${appOrigin}${path}`,
             headers: { ...replyHeaders, "Message-ID": `<${delivery.id}@${origin.hostname}>` },
             messageId: `<${delivery.id}@${origin.hostname}>`,
           });
@@ -552,13 +559,18 @@ export class NotificationWorker {
             });
             return;
           }
-          const origin = new URL(process.env.APP_ORIGIN!);
+          const tenant = await tx.tenant.findUniqueOrThrow({
+            where: { id: group.tenant_id },
+            select: { slug: true },
+          });
+          const appOrigin = tenantOrigin(tenant.slug);
+          const origin = new URL(appOrigin);
           await this.mail.sendMail({
             from: process.env.SMTP_FROM,
             to: user.email,
             subject:
               preference?.mode === "daily" ? "Daily service desk updates" : "Service desk updates",
-            text: `You have ${deliveries.length} service desk updates. Sign in to view them:\n${process.env.APP_ORIGIN}/tickets`,
+            text: `You have ${deliveries.length} service desk updates. Sign in to view them:\n${appOrigin}/tickets`,
             messageId: `<${randomUUID()}@${origin.hostname}>`,
           });
           await tx.notificationDelivery.updateMany({

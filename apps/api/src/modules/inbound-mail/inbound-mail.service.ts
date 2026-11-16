@@ -42,7 +42,12 @@ import {
   type InboundMessageInput,
 } from "./inbound-mail.adapter.js";
 
-const appHost = process.env.APP_ORIGIN ? new URL(process.env.APP_ORIGIN).hostname : "";
+const appHost =
+  process.env.PLATFORM_MODE === "hosted"
+    ? (process.env.APP_BASE_DOMAIN ?? "")
+    : process.env.APP_ORIGIN
+      ? new URL(process.env.APP_ORIGIN).hostname
+      : "";
 const allowedHtml = {
   allowedTags: ["p", "br", "strong", "em", "ul", "ol", "li", "blockquote", "a"],
   allowedAttributes: { a: ["href"] },

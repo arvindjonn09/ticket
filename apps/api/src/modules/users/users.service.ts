@@ -17,6 +17,7 @@ import { argon2id, hash, verify } from "argon2";
 import { randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { canConfigureOrganisation, canReadTicket, type Actor } from "@astrama/domain";
+import { tenantOrigin } from "../../platform.js";
 import {
   createUserSchema,
   invitationActivationSchema,
@@ -289,7 +290,7 @@ export class UsersService {
       },
     });
     const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: auth.tenantId } });
-    const url = `${process.env.APP_ORIGIN}/#activate?token=${encodeURIComponent(token)}&organisation=${encodeURIComponent(tenant.slug)}`;
+    const url = `${tenantOrigin(tenant.slug)}/#activate?token=${encodeURIComponent(token)}&organisation=${encodeURIComponent(tenant.slug)}`;
     await tx.invitationMail.updateMany({
       where: { tenantId: auth.tenantId, userId: user.id, status: "pending" },
       data: { status: "skipped", encryptedUrl: null, lastError: "Invitation superseded" },

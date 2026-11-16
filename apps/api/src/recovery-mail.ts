@@ -3,6 +3,7 @@ import { createTransport } from "nodemailer";
 import { Database } from "./database.js";
 import { decryptSecret } from "./mfa.js";
 import { RecoveryService } from "./recovery.js";
+import { platformMode, tenantOrigin } from "./platform.js";
 
 type RecoveryMail = {
   id: string;
@@ -36,7 +37,11 @@ export class RecoveryMailer {
   ) {}
   async dispatch() {
     if (this.dispatching) return;
-    if (!process.env.SMTP_HOST || !process.env.SMTP_FROM || !process.env.APP_ORIGIN)
+    if (
+      !process.env.SMTP_HOST ||
+      !process.env.SMTP_FROM ||
+      (platformMode() === "single" && !process.env.APP_ORIGIN)
+    )
       throw new Error("Recovery mail configuration is incomplete");
     this.dispatching = true;
     try {
@@ -59,6 +64,10 @@ export class RecoveryMailer {
         const user = await tx.user.findFirst({
           where: { tenantId, id: item.user_id, active: true },
         });
+        const tenant = await tx.tenant.findUniqueOrThrow({
+          where: { id: tenantId },
+          select: { slug: true },
+        });
         if (
           !user ||
           item.used_at ||
@@ -74,7 +83,7 @@ export class RecoveryMailer {
           const url = decryptSecret(item.encrypted_url, `recovery:${tenantId}:${user.id}:${id}`),
             parsed = new URL(url);
           if (
-            parsed.origin !== process.env.APP_ORIGIN ||
+            parsed.origin !== tenantOrigin(tenant.slug) ||
             parsed.pathname !== "/" ||
             !parsed.hash.startsWith("#reset-password?")
           )
@@ -84,7 +93,7 @@ export class RecoveryMailer {
             to: user.email,
             subject: "Reset your service desk password",
             text: `A password reset was requested for your service desk account. This single-use link expires at ${item.expires_at.toISOString()}:\n${url}\n\nYour authenticator remains required. If you did not request this, ignore this email.`,
-            messageId: `<recovery-${id}@astrama.local>`,
+            messageId: `<recovery-${id}@${new URL(tenantOrigin(tenant.slug)).hostname}>`,
           });
           await tx.$executeRaw`UPDATE password_recoveries SET status='sent',encrypted_url=NULL,sent_at=now(),attempts=attempts+1,last_error=NULL WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid AND status='pending'`;
         } catch {

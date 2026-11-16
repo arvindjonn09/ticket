@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import "./i18n";
 import "./styles.css";
 import { api, ApiError } from "./api";
@@ -24,12 +25,14 @@ const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 function App() {
+  const { t } = useTranslation();
   const [resetting] = useState(() => location.hash.startsWith("#reset-password?"));
   const [activating] = useState(
     () => location.pathname === "/activate" || location.hash.startsWith("#activate?"),
   );
   const session = useQuery({
     queryKey: ["session"],
+    enabled: false,
     queryFn: async () => {
       try {
         return await api<SessionView>("/auth/session");
@@ -39,6 +42,41 @@ function App() {
       }
     },
   });
+  const host = useQuery({
+    queryKey: ["platform-host"],
+    queryFn: async () => {
+      try {
+        return await api<{ mode: string; kind: string; tenantSlug?: string }>("/platform/host");
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404)
+          return { mode: "hosted", kind: "unknown" };
+        throw error;
+      }
+    },
+  });
+  React.useEffect(() => {
+    if (host.data?.kind === "tenant" || host.data?.kind === "single") void session.refetch();
+  }, [host.data?.kind]);
+  if (host.isPending) return <Loading />;
+  if (host.error)
+    return (
+      <div className="startup-error">
+        <Failure error={host.error} retry={() => void host.refetch()} />
+      </div>
+    );
+  if (host.data?.kind === "unknown")
+    return (
+      <main className="startup-error" role="main">
+        <h1>{t("organisationNotFound")}</h1>
+        <p>{t("organisationNotFoundHint")}</p>
+      </main>
+    );
+  if (host.data?.kind === "public" || host.data?.kind === "operator")
+    return (
+      <main className="startup-error" role="main">
+        <h1>{t("platformNotAvailable")}</h1>
+      </main>
+    );
   if (resetting) return <Recovery mode="reset" />;
   if (location.pathname === "/forgot-password") return <Recovery mode="forgot" />;
   if (activating) return <Activation />;
@@ -54,7 +92,10 @@ function App() {
         />
       </div>
     );
-  if (!session.data) return <Login />;
+  if (!session.data)
+    return (
+      <Login {...(host.data?.kind === "tenant" ? { organisation: host.data.tenantSlug } : {})} />
+    );
   configureDates(session.data.tenant);
   return (
     <Routes>

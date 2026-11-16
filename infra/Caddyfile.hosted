@@ -1,0 +1,34 @@
+{
+	on_demand_tls {
+		ask http://api:4311/api/internal/tls-allowed
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	root * /srv
+	request_body {
+		max_size 9MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Referrer-Policy "same-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+	}
+	handle /api/internal/tls-allowed {
+		respond 404
+	}
+	handle /api/* {
+		reverse_proxy api:4311
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -7,7 +7,7 @@ import { updateSession } from "../../session";
 import type { SessionView } from "../../types";
 import { ThemePicker, Failure } from "./support-shared.js";
 
-export function Login() {
+export function Login({ organisation }: { organisation?: string }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const login = useMutation({
@@ -73,23 +73,27 @@ export function Login() {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
               login.mutate({
-                organisation: String(form.get("organisation")).trim(),
+                organisation: organisation ?? String(form.get("organisation")).trim(),
                 email: String(form.get("email")).trim(),
                 password: String(form.get("password")),
                 ...(form.get("totpCode") ? { totpCode: String(form.get("totpCode")) } : {}),
               });
             }}
           >
-            <label>
-              {t("organisation")}
-              <input
-                name="organisation"
-                autoComplete="organization"
-                placeholder={t("organisationPlaceholder")}
-                required
-                maxLength={100}
-              />
-            </label>
+            {organisation ? (
+              <input type="hidden" name="organisation" value={organisation} />
+            ) : (
+              <label>
+                {t("organisation")}
+                <input
+                  name="organisation"
+                  autoComplete="organization"
+                  placeholder={t("organisationPlaceholder")}
+                  required
+                  maxLength={100}
+                />
+              </label>
+            )}
             <label>
               {t("email")}
               <input

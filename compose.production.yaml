@@ -6,7 +6,11 @@ x-logging: &default-logging
     max-file: "5"
 x-api-env: &runtime
   NODE_ENV: production
-  APP_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN}
+  PLATFORM_MODE: ${PLATFORM_MODE:-single}
+  APP_ORIGIN: ${APP_ORIGIN:-https://${APP_DOMAIN:-localhost}}
+  APP_BASE_DOMAIN: ${APP_BASE_DOMAIN:-astrama.test}
+  PUBLIC_SITE_ORIGIN: ${PUBLIC_SITE_ORIGIN:-https://astrama.test}
+  OPERATOR_ORIGIN: ${OPERATOR_ORIGIN:-https://ops.astrama.test}
   PORT: 4311
   DATABASE_URL: postgresql://astrama_app:${APP_DB_PASSWORD:?Set URL-safe APP_DB_PASSWORD}@db:5432/astrama
   MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?Set private stable MFA_ENCRYPTION_KEY}
@@ -93,6 +97,10 @@ services:
     logging: *default-logging
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
+      PLATFORM_MODE: ${PLATFORM_MODE:-single}
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'if [ "$$PLATFORM_MODE" = hosted ]; then exec caddy run --config /etc/caddy/Caddyfile.hosted --adapter caddyfile; else exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile; fi'
     ports: ["80:80", "443:443"]
     volumes: ["caddy_data:/data", "caddy_config:/config"]
     read_only: true

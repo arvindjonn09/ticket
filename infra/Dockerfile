@@ -32,5 +32,6 @@ CMD ["node", "dist/main.js"]
 
 FROM caddy:2.10-alpine AS web
 COPY infra/Caddyfile /etc/caddy/Caddyfile
+COPY infra/Caddyfile.hosted /etc/caddy/Caddyfile.hosted
 COPY --from=build /app/apps/web/dist /srv
 EXPOSE 80 443

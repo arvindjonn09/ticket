@@ -1,11 +1,11 @@
 ﻿# Astrama delivery status
 
-Status updated 14 November 2026. Detailed dated delivery records are in [November history](history/2026-11.md).
+Status updated 16 November 2026. Detailed dated delivery records are in [November history](history/2026-11.md).
 
 ## Current position
 
-- **CX-01 — secure source control:** complete. Feature branch is pushed, gitleaks is clean on the working tree and full history, and PR #1 was merged after GitHub CI passed.
-- **CX-02 — structure and formatting:** implemented on `feat/structure-formatting` in separate tooling, formatting, API-move, and web-split commits. API and web code typecheck after relocation. Full final CI and gitleaks remain pending before push.
+- **CX-01 — secure source control:** feature branch is pushed and PR #1 was merged after CI passed. The repository is still public; CR-01 remains an owner action.
+- **CX-02 — structure and formatting:** implemented on `feat/structure-formatting` in separate tooling, formatting, API-move, and web-split commits. API and web code typecheck after relocation.
 - **CX-06 — plan and agent briefs:** complete. D1–D5 are recorded as confirmed, the historical status is in `docs/history/2026-11.md`, and the integration engineer brief/model mapping are in place.
 - **CX-03 — agent access and MFA:** implementation committed. Focused domain, request, incident, launch-safety and organisation integration checks passed on isolated PostgreSQL; full API suite and final CI remain pending.
 - **CX-04 — email intake:** implementation is present but acceptance is incomplete. The inbound adapter, schema, worker, admin mapping UI, sender verification, reply tokens, deduplication, scanning/quarantine, and smoke tenant are implemented. Full acceptance coverage remains incomplete; no real provider/clean-host exercise has been recorded.
@@ -14,15 +14,17 @@ Status updated 14 November 2026. Detailed dated delivery records are in [Novembe
 - **CR-A — SLA review:** complete before any SLA commit. Focused PostgreSQL tests pass for clock snapshots, internal recipients, and dispatch beyond 500 candidates.
 - **CR-B — configuration locking:** implementation and ADR are present. The 100-account smoke is noisy: two post-change runs measured submit p50/p95 of 413/711 ms and 439/926 ms, versus the recorded 908 ms baseline p95; this is not evidence of a repeatable improvement. Login retains exclusive revalidation, and recovery delivery now serializes by recovery row.
 - **CR-C — visibility and search:** implementation is present, including FTS/trigram indexes, cursor pagination, and visibility parity coverage. Exact INC/SR number searches are prioritized and tested against records older than the first 200.
-- **CR-D — headers and notification preferences:** headers and immediate/daily/off preference implementation are present. The full delivery integration suite is currently failing in this local reused fixture environment; resolve and rerun before calling the packet complete.
+- **CR-D — headers and notification preferences:** headers and immediate/daily/off preference implementation are present. The delivery integration suite is not green locally; rerun it with isolated CI fixtures and resolve any product regressions.
 - **CR-E / CR-F:** not complete. TOTP/calendar/restic replacements, NestJS dependency injection cleanup, and support-page splitting remain outstanding.
 
 ## Verification and delivery gates
 
-- CR-A focused SLA PostgreSQL tests passed (3/3); CR-C incident/search and load suites passed (16/16), CR-B request and launch-safety suites passed (19/19) after fixes. A subsequent API-wide run had 7 failures across launch-safety, recovery, and request tests; those affected cases were fixed, and their focused rerun passed (19/19). CR-D delivery integration rerun currently has 4 failures (attachment setup, recipient expectations, SLA report metrics, and pending-outbox fixture contamination). Full CI has not passed.
-- Gitleaks full-history scan passed. Working-tree scan reported 34 findings: one in ignored local `.env` and the rest in ignored `.pnpm-store` package cache files. The local `.env` finding has not been classified or rotated; do not push until it is resolved and the working-tree scan is clean.
+- Commit `33f698e` is pushed to `feat/structure-formatting`. GitHub gitleaks passed; GitHub verify failed at “Wait for the app” before any test steps ran. The cause was the Caddy web service lacking `APP_DOMAIN`; the PR-A fix is in progress.
+- PR-A local verification: `docker compose config --quiet` passed, the web image built, and an isolated Caddy container served `/` and proxied `/api/health` with CSP/HSTS headers.
+- Static checks passed on `33f698e`: formatting, lint (0 errors, 51 warnings), build, typecheck, production-script checks, and license check. API-wide tests did not pass; the delivery integration suite had 4 failures in the reused local fixture database.
+- Full-history gitleaks and staged gitleaks passed for `33f698e`. A raw local directory scan is polluted by ignored `.env` and `.pnpm-store` files; GitHub's committed-tree gitleaks job passed.
 - Do not claim production readiness until CX-07's clean-machine install, backup/restore, upgrade/rollback, offsite alert delivery, and monitoring evidence is recorded.
 
 ## Agent activity
 
-No sub-agents were dispatched for the current handoff. Runtime token usage was not reported. No commit or push has been made. Do not push until full CI and both gitleaks scans pass; the ignored local `.env` still has an unclassified finding.
+No sub-agents were dispatched for the current handoff. Runtime token usage was not reported. PR-A changes are local and uncommitted; rerun the GitHub workflow after pushing them. No production host, DNS, SMTP credentials, or offsite backup credentials are configured here, so production deployment and clean-host recovery drills remain deployment inputs.

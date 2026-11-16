@@ -56,6 +56,7 @@ services:
   web:
     build: { context: ., dockerfile: infra/Dockerfile, target: web }
     ports: ["127.0.0.1:4310:80"]
+    environment: { APP_DOMAIN: ":80" }
     depends_on: { api: { condition: service_healthy } }
   mail:
     image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce

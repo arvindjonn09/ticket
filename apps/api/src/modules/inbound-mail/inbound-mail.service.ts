@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -52,7 +53,7 @@ const terminalMailStates = ["Complete", "Cancelled", "Rejected"];
 export function collapseQuotedHistory(text: string) {
   return text
     .split(
-      /\n(?:On .{1,200}wrote:|_{5,}\s*Forwarded message\s*_{5,}|-{5,}\s*Original Message\s*-{5,})/i,
+      /\r?\n(?:On .{1,200}wrote:|_{5,}\s*Forwarded message\s*_{5,}|-{5,}\s*Original Message\s*-{5,}|_{10,}\r?\nFrom: [^\r\n]+(?:\r?\nSent: [^\r\n]*)?|From: [^\r\n]+\r?\nSent: [^\r\n]*)/i,
       1,
     )[0]!
     .trim();
@@ -60,6 +61,7 @@ export function collapseQuotedHistory(text: string) {
 
 @Injectable()
 export class InboundMailService {
+  private readonly logger = new Logger(InboundMailService.name);
   private readonly storage = new S3Client({
     endpoint: process.env.S3_ENDPOINT,
     region: process.env.S3_REGION ?? "us-east-1",
@@ -469,34 +471,46 @@ export class InboundMailService {
           where: { tenantId, email: message.senderEmail, active: true },
         });
         const auth = message.authResults as { spf: string; dkim: string; dmarc: string };
-        const verified =
-          !!sender && auth.spf === "pass" && auth.dkim === "pass" && auth.dmarc === "pass";
+        const verified = !!sender && auth.dmarc === "pass";
         if (!sender && !settings.allowUnverifiedSenders) {
           await this.finishMessage(tx, tenantId, id, null, [], "ignored");
           return;
         }
         const correlation =
           verified && sender ? await this.correlatedTicket(tx, tenantId, message, sender.id) : null;
-        if (correlation && !terminalMailStates.includes(correlation.state)) {
-          const participant = await this.isParticipant(tx, tenantId, correlation, sender!.id);
+        if (correlation && !terminalMailStates.includes(correlation.ticket.state)) {
+          const participant = await this.isParticipant(
+            tx,
+            tenantId,
+            correlation.ticket,
+            sender!.id,
+          );
           if (participant) {
             await tx.activity.create({
               data: {
                 tenantId,
-                ticketId: correlation.id,
+                ticketId: correlation.ticket.id,
                 authorId: sender!.id,
                 body: collapseQuotedHistory(message.textBody),
-                audience: "customer",
+                audience: correlation.audience,
               },
             });
             await tx.ticket.update({
-              where: { id: correlation.id },
-              data: { revision: { increment: 1 }, updatedAt: new Date() },
+              where: { id: correlation.ticket.id },
+              data: {
+                revision: { increment: 1 },
+                updatedAt: new Date(),
+                ...(sender!.role === "agent" &&
+                correlation.audience === "customer" &&
+                !correlation.ticket.slaFirstRespondedAt
+                  ? { slaFirstRespondedAt: new Date() }
+                  : {}),
+              },
             });
             await tx.audit.create({
               data: {
                 tenantId,
-                ticketId: correlation.id,
+                ticketId: correlation.ticket.id,
                 actorId: sender!.id,
                 action: "ticket.email_reply",
                 detail: { inboundMessageId: id },
@@ -505,21 +519,21 @@ export class InboundMailService {
             await tx.outbox.create({
               data: {
                 tenantId,
-                ticketId: correlation.id,
+                ticketId: correlation.ticket.id,
                 event: "ticket.message",
-                payload: { audience: "customer", inbound: true },
+                payload: { audience: correlation.audience, inbound: true },
               },
             });
             const attachments = await this.addAttachments(
               tx,
               tenantId,
-              correlation,
+              correlation.ticket,
               this.asInput(message),
               sender!.id,
-              "customer",
+              correlation.audience,
               uploaded,
             );
-            await this.finishMessage(tx, tenantId, id, correlation.id, attachments);
+            await this.finishMessage(tx, tenantId, id, correlation.ticket.id, attachments);
             return;
           }
         }
@@ -531,7 +545,9 @@ export class InboundMailService {
             ? sender.id
             : await this.triageReporter(tx, tenantId, route.departmentId);
         const source =
-          correlation && terminalMailStates.includes(correlation.state) ? correlation : null;
+          correlation && terminalMailStates.includes(correlation.ticket.state)
+            ? correlation.ticket
+            : null;
         const created = await this.createInboundTicket(tx, {
           tenantId,
           actorId,
@@ -547,7 +563,7 @@ export class InboundMailService {
         });
         await this.finishMessage(tx, tenantId, id, created.ticket.id, created.attachments);
       });
-    } catch {
+    } catch (error) {
       for (const key of uploaded)
         await this.storage
           .send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }))
@@ -556,6 +572,23 @@ export class InboundMailService {
         const message = await tx.inboundMessage.findFirst({ where: { tenantId, id } });
         if (!message || message.status === "processed" || message.status === "ignored") return;
         const attempts = message.attempts + 1;
+        const code =
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          (typeof error.code === "string" || typeof error.code === "number")
+            ? error.code
+            : undefined;
+        this.logger.error(
+          JSON.stringify({
+            event: "inbound_message_processing_failed",
+            tenantId,
+            inboundMessageId: id,
+            attempt: attempts,
+            errorName: error instanceof Error ? error.name : typeof error,
+            ...(code === undefined ? {} : { errorCode: code }),
+          }),
+        );
         await tx.inboundMessage.update({
           where: { id },
           data: {
@@ -870,37 +903,44 @@ export class InboundMailService {
       subject: string;
     },
     senderId: string,
-  ) {
+  ): Promise<{ ticket: Ticket; audience: "customer" | "internal" } | null> {
     const deliveryIds = [message.inReplyTo, ...message.references]
       .filter((v): v is string => !!v)
       .map(notificationDeliveryId)
       .filter((v): v is string => !!v);
     let ticketId: string | null = null;
+    let audience: "customer" | "internal" = "customer";
     if (message.replyTokenHash) {
       const delivery = await tx.notificationDelivery.findFirst({
-        where: { tenantId, replyTokenHash: message.replyTokenHash },
+        where: { tenantId, recipientId: senderId, replyTokenHash: message.replyTokenHash },
+        include: { event: { select: { ticketId: true, payload: true } } },
       });
-      if (delivery)
-        ticketId =
-          (
-            await tx.outbox.findFirst({
-              where: { tenantId, id: delivery.eventId },
-              select: { ticketId: true },
-            })
-          )?.ticketId ?? null;
+      if (delivery) {
+        ticketId = delivery.event.ticketId;
+        audience =
+          delivery.event.payload &&
+          typeof delivery.event.payload === "object" &&
+          "audience" in delivery.event.payload &&
+          delivery.event.payload.audience === "internal"
+            ? "internal"
+            : "customer";
+      }
     }
     if (!ticketId && deliveryIds.length) {
       const delivery = await tx.notificationDelivery.findFirst({
-        where: { tenantId, id: { in: deliveryIds } },
+        where: { tenantId, recipientId: senderId, id: { in: deliveryIds } },
+        include: { event: { select: { ticketId: true, payload: true } } },
       });
-      if (delivery)
-        ticketId =
-          (
-            await tx.outbox.findFirst({
-              where: { tenantId, id: delivery.eventId },
-              select: { ticketId: true },
-            })
-          )?.ticketId ?? null;
+      if (delivery) {
+        ticketId = delivery.event.ticketId;
+        audience =
+          delivery.event.payload &&
+          typeof delivery.event.payload === "object" &&
+          "audience" in delivery.event.payload &&
+          delivery.event.payload.audience === "internal"
+            ? "internal"
+            : "customer";
+      }
     }
     if (!ticketId) {
       const number = message.subject.match(/\[([A-Z0-9_-]{2,32})\]/i)?.[1];
@@ -916,7 +956,10 @@ export class InboundMailService {
         ticketId = found?.id ?? null;
       }
     }
-    return ticketId ? tx.ticket.findFirst({ where: { tenantId, id: ticketId } }) : null;
+    const ticket = ticketId
+      ? await tx.ticket.findFirst({ where: { tenantId, id: ticketId } })
+      : null;
+    return ticket ? { ticket, audience } : null;
   }
 
   private async isParticipant(tx: Tx, tenantId: string, ticket: Ticket, senderId: string) {

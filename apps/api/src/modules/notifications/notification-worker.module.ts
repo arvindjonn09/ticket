@@ -8,6 +8,7 @@ import { InboundMailService } from "../inbound-mail/inbound-mail.service.js";
 import { SlaService } from "../sla/sla.service.js";
 import { TicketsService } from "../tickets/tickets.service.js";
 import { NotificationWorker } from "./notifications.service.js";
+import { SaasService } from "../billing/saas.service.js";
 
 @Module({
   providers: [
@@ -20,6 +21,7 @@ import { NotificationWorker } from "./notifications.service.js";
     SlaService,
     InboundMailService,
     NotificationWorker,
+    SaasService,
   ],
 })
 export class NotificationWorkerModule {}

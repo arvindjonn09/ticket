@@ -18,6 +18,27 @@ export function validateProduction(env, allowLocal = false) {
     "OPERATOR_ALERT_EMAIL",
   ];
   const issues = required.filter((key) => !env[key]?.trim()).map((key) => `${key} is required`);
+  if (env.PLATFORM_MODE && !["single", "hosted"].includes(env.PLATFORM_MODE))
+    issues.push("PLATFORM_MODE must be single or hosted");
+  if (env.PLATFORM_MODE === "hosted") {
+    for (const key of [
+      "APP_BASE_DOMAIN",
+      "PUBLIC_SITE_ORIGIN",
+      "OPERATOR_ORIGIN",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "CAPTCHA_HMAC_SECRET",
+    ])
+      if (!env[key]?.trim()) issues.push(`${key} is required for hosted mode`);
+    if (env.PAYMENT_PROVIDER && env.PAYMENT_PROVIDER !== "stripe")
+      issues.push("PAYMENT_PROVIDER must be stripe in production");
+    if (env.STRIPE_SECRET_KEY && !/^sk_(test|live)_/.test(env.STRIPE_SECRET_KEY))
+      issues.push("STRIPE_SECRET_KEY must be a Stripe secret key");
+    if (env.STRIPE_WEBHOOK_SECRET && !/^whsec_/.test(env.STRIPE_WEBHOOK_SECRET))
+      issues.push("STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret");
+    if (env.CAPTCHA_HMAC_SECRET && env.CAPTCHA_HMAC_SECRET.length < 32)
+      issues.push("CAPTCHA_HMAC_SECRET must contain at least 32 characters");
+  }
   if (
     !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(env.APP_DOMAIN ?? "") ||
     (!allowLocal && !env.APP_DOMAIN?.includes("."))

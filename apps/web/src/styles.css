@@ -748,6 +748,26 @@ tbody tr:hover {
   border-radius: 8px;
   padding: 28px;
 }
+.billing-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+  margin: 22px 0;
+}
+.billing-details dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.billing-details dd {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 label {
   display: flex;
   flex-direction: column;

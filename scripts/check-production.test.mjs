@@ -26,6 +26,25 @@ test("production preflight rejects missing, shared and demonstration secrets", (
   };
   assert.deepEqual(validateProduction(env), []);
   assert.ok(
+    validateProduction({ ...env, PLATFORM_MODE: "hosted" }).some((value) =>
+      value.includes("STRIPE_SECRET_KEY is required for hosted mode"),
+    ),
+  );
+  assert.deepEqual(
+    validateProduction({
+      ...env,
+      PLATFORM_MODE: "hosted",
+      APP_BASE_DOMAIN: "change-me.example",
+      PUBLIC_SITE_ORIGIN: "https://change-me.example",
+      OPERATOR_ORIGIN: "https://ops.change-me.example",
+      PAYMENT_PROVIDER: "stripe",
+      STRIPE_SECRET_KEY: "sk_test_synthetic",
+      STRIPE_WEBHOOK_SECRET: "whsec_synthetic",
+      CAPTCHA_HMAC_SECRET: randomBytes(32).toString("hex"),
+    }),
+    [],
+  );
+  assert.ok(
     validateProduction({ ...env, APP_DOMAIN: "Desk.Example.com" }).some((value) =>
       value.includes("lowercase hostname"),
     ),

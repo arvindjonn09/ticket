@@ -17,9 +17,11 @@ import { createHmac, randomUUID } from "node:crypto";
 import { encryptionKey } from "../../mfa.js";
 import { replyTokenHash } from "../inbound-mail/inbound-mail.adapter.js";
 import { platformMode, tenantOrigin } from "../../platform.js";
+import { SaasService } from "../billing/saas.service.js";
 
 const jobSchema = z.object({ tenantId: z.string().uuid(), eventId: z.string().uuid() }).strict();
 const queue = "ticket-notification";
+const provisioningQueue = "tenant-provisioning";
 @Injectable()
 export class NotificationWorker {
   private readonly boss: PgBoss;
@@ -48,6 +50,7 @@ export class NotificationWorker {
     private readonly automation: AutomationService,
     private readonly sla: SlaService,
     private readonly inbound: InboundMailService,
+    private readonly saas: SaasService,
   ) {
     if (
       !process.env.DATABASE_URL ||
@@ -77,11 +80,25 @@ export class NotificationWorker {
       expireInSeconds: 600,
       retentionSeconds: 30 * 86400,
     });
+    await this.boss.createQueue(provisioningQueue, {
+      retryLimit: 10,
+      retryDelay: 30,
+      retryBackoff: true,
+      expireInSeconds: 600,
+      retentionSeconds: 30 * 86400,
+    });
     await this.boss.work<{ tenantId: string; eventId: string }>(
       queue,
       { batchSize: 10 },
       async (jobs) => {
         for (const job of jobs) await this.deliver(jobSchema.parse(job.data));
+      },
+    );
+    await this.boss.work<{ signupId: string }>(
+      provisioningQueue,
+      { batchSize: 5 },
+      async (jobs) => {
+        for (const job of jobs) await this.saas.provisionSignup(job.data.signupId);
       },
     );
     await this.dispatch();
@@ -101,6 +118,10 @@ export class NotificationWorker {
     this.dispatching = true;
     let successful = false;
     try {
+      await this.saas.enqueueProvisioning((signupId, attempt) =>
+        this.boss.send(provisioningQueue, { signupId }, { id: `signup:${signupId}:${attempt}` }),
+      );
+      await this.saas.dispatchPublicMail();
       if (Date.now() - this.lastAutomationAt > 60000) {
         await this.automation.dispatch();
         this.lastAutomationAt = Date.now();

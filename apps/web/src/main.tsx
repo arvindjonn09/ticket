@@ -11,6 +11,7 @@ import { AuthenticatorSetup, OrganisationSetup } from "./workspaces/admin/organi
 import { NewRequest, Approvals, Reports } from "./workspaces/approver/completion";
 import { Activation, Profile } from "./workspaces/employee/people";
 import { Recovery } from "./recovery";
+import { Billing, Signup } from "./billing";
 import type { SessionView } from "./types";
 import {
   Failure,
@@ -72,6 +73,8 @@ function App() {
       </main>
     );
   if (host.data?.kind === "public" || host.data?.kind === "operator")
+    if (host.data.kind === "public" && location.pathname.startsWith("/signup")) return <Signup />;
+  if (host.data?.kind === "public" || host.data?.kind === "operator")
     return (
       <main className="startup-error" role="main">
         <h1>{t("platformNotAvailable")}</h1>
@@ -118,7 +121,13 @@ function App() {
             )}
             <Route path="/tickets/:id" element={<IncidentDetail />} />
             {session.data.user.role === "admin" && (
-              <Route path="/organisation" element={<OrganisationSetup session={session.data} />} />
+              <>
+                <Route
+                  path="/organisation"
+                  element={<OrganisationSetup session={session.data} />}
+                />
+                <Route path="/billing" element={<Billing session={session.data} />} />
+              </>
             )}
             <Route
               path="*"

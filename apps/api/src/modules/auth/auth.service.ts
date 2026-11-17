@@ -379,9 +379,13 @@ export class SessionGuard implements CanActivate {
     if (
       request.auth.view.tenant.status === "read_only" &&
       !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
-      !["/api/auth/logout", "/api/auth/mfa/setup", "/api/auth/mfa/verify"].includes(
-        request.url.split("?")[0]!,
-      )
+      ![
+        "/api/auth/logout",
+        "/api/auth/mfa/setup",
+        "/api/auth/mfa/verify",
+        "/api/billing/checkout",
+        "/api/billing/portal",
+      ].includes(request.url.split("?")[0]!)
     )
       throw new ForbiddenException({
         message: "This organisation is read-only. Contact billing to restore write access.",

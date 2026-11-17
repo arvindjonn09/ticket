@@ -2,7 +2,16 @@ import { useEffect } from "react";
 import { Link, NavLink, Outlet, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Check, CirclePlus, Inbox, LifeBuoy, LockKeyhole, LogOut, Ticket } from "lucide-react";
+import {
+  Check,
+  CirclePlus,
+  CreditCard,
+  Inbox,
+  LifeBuoy,
+  LockKeyhole,
+  LogOut,
+  Ticket,
+} from "lucide-react";
 import { api } from "../../api";
 import { updateSession } from "../../session";
 import type { SessionView } from "../../types";
@@ -109,13 +118,21 @@ export function Shell({ session }: { session: SessionView }) {
             </>
           )}
           {session.user.role === "admin" && (
-            <NavLink
-              to={session.mfaVerified ? "/organisation" : "/authenticator"}
-              className="nav-link"
-            >
-              <LockKeyhole size={18} />
-              {t(session.mfaVerified ? "organisationSetup" : "mfaTitle")}
-            </NavLink>
+            <>
+              <NavLink
+                to={session.mfaVerified ? "/organisation" : "/authenticator"}
+                className="nav-link"
+              >
+                <LockKeyhole size={18} />
+                {t(session.mfaVerified ? "organisationSetup" : "mfaTitle")}
+              </NavLink>
+              {session.mfaVerified && (
+                <NavLink to="/billing" className="nav-link">
+                  <CreditCard size={18} />
+                  {t("billing.title")}
+                </NavLink>
+              )}
+            </>
           )}
         </nav>
         <div className="sidebar-bottom">

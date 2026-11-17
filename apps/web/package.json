@@ -12,6 +12,7 @@
   "dependencies": {
     "@astrama/contracts": "workspace:*",
     "@tanstack/react-query": "^5.90.5",
+    "altcha-lib": "^2.8.0",
     "i18next": "^25.6.0",
     "lucide-react": "^0.552.0",
     "qrcode.react": "^4.2.0",

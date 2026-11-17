@@ -21,6 +21,8 @@ model Tenant {
   deleteAfter             DateTime?                @map("delete_after") @db.Timestamptz(6)
   seatLimit               Int                      @default(100000) @map("seat_limit")
   planId                  String?                  @map("plan_id")
+  stripeCustomerId        String?                  @map("stripe_customer_id")
+  stripeSubscriptionId    String?                  @map("stripe_subscription_id")
   starterTemplateVersion  String?                  @map("starter_template_version")
   incidentPrefix          String                   @default("INC") @map("incident_prefix")
   requestPrefix           String                   @default("SR") @map("request_prefix")
@@ -42,20 +44,81 @@ model Tenant {
   inboundSenderRates      InboundSenderRate[]
   notificationPreferences NotificationPreference[]
   lifecycleNotices        TenantLifecycleNotice[]
+  billingPlan             BillingPlan?             @relation(fields: [planId], references: [id])
 
   @@map("tenants")
 }
 
+model BillingPlan {
+  id              String   @id
+  name            String
+  stripePriceId   String   @unique @map("stripe_price_id")
+  seatLimit       Int      @map("seat_limit")
+  billingInterval String   @map("billing_interval")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  tenants         Tenant[]
+
+  @@map("billing_plans")
+}
+
+model SignupRequest {
+  id                  String    @id @default(uuid()) @db.Uuid
+  slug                String    @unique
+  companyName         String    @map("company_name")
+  adminName           String    @map("admin_name")
+  adminEmail          String    @map("admin_email")
+  timezone            String
+  planId              String?   @map("plan_id")
+  verificationHash    String    @unique @map("verification_hash")
+  verificationExpires DateTime  @map("verification_expires") @db.Timestamptz(6)
+  verifiedAt          DateTime? @map("verified_at") @db.Timestamptz(6)
+  provisionedTenantId String?   @unique @map("provisioned_tenant_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("signup_requests")
+}
+
+model SignupProvisionJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  signupId    String    @unique @map("signup_id") @db.Uuid
+  status      String    @default("queued")
+  attempts    Int       @default(0)
+  nextAttempt DateTime  @default(now()) @map("next_attempt") @db.Timestamptz(6)
+  lastError   String?   @map("last_error")
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttempt])
+  @@map("signup_provision_jobs")
+}
+
+model PublicMailOutbox {
+  id            String    @id @default(uuid()) @db.Uuid
+  recipient     String
+  subject       String
+  encryptedUrl  String?   @map("encrypted_url")
+  lockedUntil   DateTime? @map("locked_until") @db.Timestamptz(6)
+  identity      String
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  sentAt        DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sentAt, nextAttemptAt])
+  @@map("public_mail_outbox")
+}
+
 model TenantLifecycleNotice {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  periodStart DateTime @map("period_start") @db.Timestamptz(6)
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  periodStart DateTime  @map("period_start") @db.Timestamptz(6)
   kind        String
-  dueAt       DateTime @map("due_at") @db.Timestamptz(6)
-  attempts    Int      @default(0)
+  dueAt       DateTime  @map("due_at") @db.Timestamptz(6)
+  attempts    Int       @default(0)
   lastAttempt DateTime? @map("last_attempt") @db.Timestamptz(6)
   sentAt      DateTime? @map("sent_at") @db.Timestamptz(6)
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, periodStart, kind])
   @@index([sentAt, dueAt])

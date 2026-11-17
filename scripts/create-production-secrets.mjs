@@ -13,6 +13,7 @@ const values = {
   POSTGRES_PASSWORD: randomBytes(24).toString("hex"),
   APP_DB_PASSWORD: randomBytes(24).toString("hex"),
   MFA_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
+  CAPTCHA_HMAC_SECRET: randomBytes(32).toString("hex"),
   S3_ACCESS_KEY: randomBytes(16).toString("hex"),
   S3_SECRET_KEY: randomBytes(32).toString("hex"),
 };
@@ -23,5 +24,5 @@ const content = template.replace(/^([A-Z0-9_]+)=.*$/gm, (line, key) =>
 await writeFile(target, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
 await chmod(target, 0o600);
 console.log(
-  "Created .env.production with mode 600. Fill SMTP, alert email, TLS_DIRECTORY, and RELEASE_TAG locally.",
+  "Created .env.production with mode 600. Fill Stripe, SMTP, alert email, TLS_DIRECTORY, and RELEASE_TAG locally.",
 );

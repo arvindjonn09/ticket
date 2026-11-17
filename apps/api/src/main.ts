@@ -23,6 +23,11 @@ import multipart from "@fastify/multipart";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { platformConfigError, platformMode, resolveHost, tlsDomainAllowed } from "./platform.js";
+import {
+  BillingController,
+  SaasService,
+  SignupController,
+} from "./modules/billing/saas.service.js";
 import { AuthService, SessionGuard, type AuthRequest } from "./modules/auth/auth.service.js";
 import { Database } from "./database.js";
 import { TicketsService } from "./modules/tickets/tickets.service.js";
@@ -228,6 +233,8 @@ class AdminController {
 @Module({
   controllers: [
     PublicController,
+    SignupController,
+    BillingController,
     ApiController,
     AdminController,
     UsersController,
@@ -258,6 +265,7 @@ class AdminController {
     DataPolicyService,
     InboundMailService,
     SlaService,
+    SaasService,
   ],
 })
 class AppModule {}
@@ -293,11 +301,17 @@ export async function createApp() {
   const fastify = app.getHttpAdapter().getInstance();
   fastify.addHook("onRoute", (route) => {
     const methods = Array.isArray(route.method) ? route.method : [route.method];
-    if (route.url === "/api/inbound-mail/webhook" && methods.includes("POST"))
-      route.bodyLimit = 8_000_000;
+    if (
+      ["/api/inbound-mail/webhook", "/api/billing/webhook"].includes(route.url) &&
+      methods.includes("POST")
+    )
+      route.bodyLimit = route.url === "/api/inbound-mail/webhook" ? 8_000_000 : 1_000_000;
   });
   fastify.addHook("preParsing", (request, _reply, payload, done) => {
-    if (request.method !== "POST" || request.url.split("?", 1)[0] !== "/api/inbound-mail/webhook") {
+    if (
+      request.method !== "POST" ||
+      !["/api/inbound-mail/webhook", "/api/billing/webhook"].includes(request.url.split("?", 1)[0]!)
+    ) {
       done(null, payload);
       return;
     }

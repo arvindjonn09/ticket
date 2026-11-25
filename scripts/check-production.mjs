@@ -25,6 +25,7 @@ export function validateProduction(env, allowLocal = false) {
       "TENANT_REQUESTS_PER_MINUTE",
       "TENANT_UPLOAD_BYTES_PER_DAY",
       "TENANT_INBOUND_PER_HOUR",
+      "TENANT_OUTBOUND_PER_HOUR",
       "TENANT_EXPORTS_PER_DAY",
     ])
       if (!/^[1-9]\d*$/.test(env[key] ?? "") || !Number.isSafeInteger(Number(env[key])))

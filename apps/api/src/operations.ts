@@ -2,6 +2,7 @@ import { Controller, ForbiddenException, Get, Req, UseGuards } from "@nestjs/com
 import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { createConnection } from "node:net";
 import { canConfigureOrganisation } from "@astrama/domain";
+import type { EmailHealthView } from "@astrama/contracts";
 import { SessionGuard, type AuthRequest } from "./modules/auth/auth.service.js";
 import { Database } from "./database.js";
 import { TicketsService } from "./modules/tickets/tickets.service.js";
@@ -105,6 +106,32 @@ export class OperationsController {
     private readonly db: Database,
     private readonly tickets: TicketsService,
   ) {}
+  @Get("email") email(@Req() req: AuthRequest): Promise<EmailHealthView> {
+    return this.tickets.scoped(req.auth, async (tx, actor) => {
+      if (!canConfigureOrganisation({ ...actor, mfaVerified: req.auth.view.mfaVerified }))
+        throw new ForbiddenException("MFA-verified administrator required");
+      const [row] = await tx.$queryRaw<
+        { sent: bigint; failed: bigint; queued: bigint; used: bigint }[]
+      >`
+        SELECT
+          (SELECT count(*) FROM tenant_mail_deliveries WHERE tenant_id=${actor.tenantId}::uuid AND status='sent' AND created_at>=now()-interval '24 hours') AS sent,
+          (SELECT count(*) FROM tenant_mail_deliveries WHERE tenant_id=${actor.tenantId}::uuid AND status='failed' AND created_at>=now()-interval '24 hours') AS failed,
+          (SELECT count(*) FROM notification_deliveries WHERE tenant_id=${actor.tenantId}::uuid AND status IN ('pending','deferred')) +
+          (SELECT count(*) FROM invitation_mails WHERE tenant_id=${actor.tenantId}::uuid AND status='pending') +
+          (SELECT count(*) FROM password_recoveries WHERE tenant_id=${actor.tenantId}::uuid AND status='pending') AS queued,
+          COALESCE((SELECT used FROM tenant_budgets WHERE tenant_id=${actor.tenantId}::uuid AND kind='outbound'
+            AND window_start=to_timestamp(floor(extract(epoch FROM now())/3600)*3600)),0) AS used`;
+      return {
+        sent: Number(row!.sent),
+        failed: Number(row!.failed),
+        queued: Number(row!.queued),
+        outboundUsed: Number(row!.used),
+        outboundLimit: process.env.TENANT_OUTBOUND_PER_HOUR
+          ? Number(process.env.TENANT_OUTBOUND_PER_HOUR)
+          : null,
+      };
+    });
+  }
   @Get() async status(@Req() req: AuthRequest) {
     await this.tickets.scoped(req.auth, async (_tx, actor) => {
       if (!canConfigureOrganisation({ ...actor, mfaVerified: req.auth.view.mfaVerified }))

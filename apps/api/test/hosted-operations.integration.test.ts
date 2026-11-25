@@ -119,6 +119,7 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL || !process.env.S3_ENDPOINT)
         ["requests", "TENANT_REQUESTS_PER_MINUTE"],
         ["uploads", "TENANT_UPLOAD_BYTES_PER_DAY"],
         ["inbound", "TENANT_INBOUND_PER_HOUR"],
+        ["outbound", "TENANT_OUTBOUND_PER_HOUR"],
         ["exports", "TENANT_EXPORTS_PER_DAY"],
       ] as const) {
         vi.stubEnv(variable, "2");

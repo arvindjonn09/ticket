@@ -295,7 +295,16 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
         ).then((response) => response.json())) as { messages: { ID: string }[] };
         const message = (await fetch(
           `${process.env.MAILPIT_URL}/api/v1/message/${mailbox.messages[0]!.ID}`,
-        ).then((response) => response.json())) as { Text: string };
+        ).then((response) => response.json())) as {
+          Text: string;
+          From: { Address: string };
+          ReplyTo: { Address: string }[];
+        };
+        expect(message.From.Address).toBe("notifications@astrama.test");
+        const tenant = await owner.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+        expect(message.ReplyTo[0]!.Address).toMatch(
+          new RegExp(`^${tenant.slug}\\+t\\.[a-f0-9]{64}@in\\.astrama\\.test$`),
+        );
         expect(message.Text).toContain(
           `https://${(await owner.tenant.findUniqueOrThrow({ where: { id: tenantId } })).slug}.astrama.test/tickets/${ticketId}`,
         );

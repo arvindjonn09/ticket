@@ -1,5 +1,9 @@
 import { Injectable } from "@nestjs/common";
-import { createTransport } from "nodemailer";
+import {
+  createPlatformTransport,
+  platformInboundAddress,
+  sendTenantMail,
+} from "../../platform-mail.js";
 import { PgBoss } from "pg-boss";
 import { z } from "zod";
 import { canActApproval, canReadTicket, isGroupAgent } from "@astrama/domain";
@@ -13,7 +17,7 @@ import { InboundMailService } from "../inbound-mail/inbound-mail.service.js";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { encryptionKey } from "../../mfa.js";
 import { replyTokenHash } from "../inbound-mail/inbound-mail.adapter.js";
 import { platformMode, tenantOrigin } from "../../platform.js";
@@ -26,18 +30,7 @@ const provisioningQueue = "tenant-provisioning";
 @Injectable()
 export class NotificationWorker {
   private readonly boss: PgBoss;
-  private readonly mail = createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 1025),
-    secure: process.env.SMTP_SECURE === "true",
-    requireTLS: process.env.NODE_ENV === "production" && process.env.SMTP_SECURE !== "true",
-    ...(process.env.SMTP_USER
-      ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }
-      : {}),
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 10000,
-  });
+  private readonly mail = createPlatformTransport();
   private timer?: NodeJS.Timeout;
   private dispatching = false;
   private lastAutomationAt = 0;
@@ -508,18 +501,19 @@ export class NotificationWorker {
             select: { slug: true },
           });
           const appOrigin = tenantOrigin(tenant.slug);
-          const origin = new URL(appOrigin);
-          const token =
-            event.ticket.inboundReplyAddress && !slaEvent
-              ? createHmac("sha256", encryptionKey())
-                  .update(`email-reply:${data.tenantId}:${delivery.id}`)
-                  .digest("hex")
-              : null;
+          const replyAddress =
+            event.ticket.inboundReplyAddress ?? platformInboundAddress(tenant.slug);
+          const token = replyAddress
+            ? createHmac("sha256", encryptionKey())
+                .update(`email-reply:${data.tenantId}:${delivery.id}`)
+                .digest("hex")
+            : null;
           const replyHeaders: Record<string, string> = {};
-          if (token && event.ticket.inboundReplyAddress) {
-            const local = event.ticket.inboundReplyAddress.split("@", 1)[0];
-            const domain = event.ticket.inboundReplyAddress.split("@").at(-1);
-            replyHeaders["Reply-To"] = `${local}+t.${token}@${domain}`;
+          let replyTo: string | undefined;
+          if (token && replyAddress) {
+            const local = replyAddress.split("@", 1)[0];
+            const domain = replyAddress.split("@").at(-1);
+            replyTo = `${local}+t.${token}@${domain}`;
             await tx.notificationDelivery.update({
               where: { id: delivery.id },
               data: { replyTokenHash: replyTokenHash(token) },
@@ -541,8 +535,7 @@ export class NotificationWorker {
               : eligibleApprover
                 ? "/approvals"
                 : `/tickets/${event.ticketId}`;
-          await this.mail.sendMail({
-            from: process.env.SMTP_FROM,
+          await sendTenantMail(this.mail, tx, data.tenantId, {
             to: user.email,
             subject: slaEvent
               ? `SLA ${String(payload.target)} ${String(payload.stage)}: ${event.ticket.number}`
@@ -556,8 +549,9 @@ export class NotificationWorker {
                 ? `Your request ${event.ticket.number} was received. Sign in to choose its category:\n${appOrigin}${path}`
                 : `There is an update in your organisation's service desk. Sign in to view it:\n${appOrigin}${path}`,
             ),
-            headers: { ...replyHeaders, "Message-ID": `<${delivery.id}@${origin.hostname}>` },
-            messageId: `<${delivery.id}@${origin.hostname}>`,
+            replyTo,
+            headers: replyHeaders,
+            messageId: `<${delivery.id}@${new URL(appOrigin).hostname}>`,
           });
           await tx.notificationDelivery.update({
             where: { id: delivery.id },
@@ -588,7 +582,7 @@ export class NotificationWorker {
     `;
     for (const group of groups) {
       try {
-        await this.db.withTenant(group.tenant_id, async (tx) => {
+        const failure = await this.db.withTenant(group.tenant_id, async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`notification-digest:${group.tenant_id}:${group.recipient_id}`},0))`;
           const [tenant, user] = await Promise.all([
             tx.tenant.findUniqueOrThrow({
@@ -629,19 +623,26 @@ export class NotificationWorker {
             return;
           }
           const appOrigin = tenantOrigin(tenant.slug);
-          const origin = new URL(appOrigin);
-          await this.mail.sendMail({
-            from: process.env.SMTP_FROM,
-            to: user.email,
-            subject:
-              preference?.mode === "daily" ? "Daily service desk updates" : "Service desk updates",
-            text: await brandedMailText(
-              tx,
-              group.tenant_id,
-              `You have ${deliveries.length} service desk updates. Sign in to view them:\n${appOrigin}/tickets`,
-            ),
-            messageId: `<${randomUUID()}@${origin.hostname}>`,
-          });
+          try {
+            await sendTenantMail(this.mail, tx, group.tenant_id, {
+              to: user.email,
+              subject:
+                preference?.mode === "daily"
+                  ? "Daily service desk updates"
+                  : "Service desk updates",
+              text: await brandedMailText(
+                tx,
+                group.tenant_id,
+                `You have ${deliveries.length} service desk updates. Sign in to view them:\n${appOrigin}/tickets`,
+              ),
+            });
+          } catch {
+            await tx.notificationDelivery.updateMany({
+              where: { id: { in: deliveries.map((d) => d.id) }, status: "deferred" },
+              data: { attempts: { increment: 1 }, lastError: "SMTP delivery failed" },
+            });
+            return true;
+          }
           await tx.notificationDelivery.updateMany({
             where: { id: { in: deliveries.map((d) => d.id) }, status: "deferred" },
             data: {
@@ -651,7 +652,9 @@ export class NotificationWorker {
               lastError: null,
             },
           });
+          return false;
         });
+        if (failure) throw new Error("SMTP delivery failed");
       } catch (error) {
         if (!(error instanceof Error && error.message === "Tenant unavailable")) throw error;
       }

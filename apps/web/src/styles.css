@@ -161,7 +161,6 @@ svg {
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
-  transition: background 0.15s;
 }
 .primary {
   color: #fff;

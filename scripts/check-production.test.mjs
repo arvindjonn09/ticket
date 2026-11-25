@@ -37,6 +37,7 @@ test("production preflight rejects missing, shared and demonstration secrets", (
       TENANT_REQUESTS_PER_MINUTE: "2",
       TENANT_UPLOAD_BYTES_PER_DAY: "1024",
       TENANT_INBOUND_PER_HOUR: "2",
+      TENANT_OUTBOUND_PER_HOUR: "2",
       TENANT_EXPORTS_PER_DAY: "2",
       APP_BASE_DOMAIN: "change-me.example",
       PUBLIC_SITE_ORIGIN: "https://change-me.example",

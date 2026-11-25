@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
-import { createTransport } from "nodemailer";
+import { createPlatformTransport, sendTenantMail } from "../../platform-mail.js";
 import { Database, lockConfigurationExclusive } from "../../database.js";
 import { tenantOrigin } from "../../platform.js";
 import { deleteExpiredTenant } from "../../operator-data.js";
@@ -22,18 +22,7 @@ const elapsed = (date: Date, now: Date) => date.getTime() <= now.getTime();
 @Injectable()
 export class TenantLifecycleService implements OnModuleDestroy {
   private readonly owner: PrismaClient;
-  private readonly mail = createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 1025),
-    secure: process.env.SMTP_SECURE === "true",
-    requireTLS: process.env.NODE_ENV === "production" && process.env.SMTP_SECURE !== "true",
-    ...(process.env.SMTP_USER
-      ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }
-      : {}),
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 10000,
-  });
+  private readonly mail = createPlatformTransport();
 
   constructor(private readonly db: Database) {
     if (!process.env.MIGRATION_DATABASE_URL || !process.env.SMTP_HOST || !process.env.SMTP_FROM)
@@ -179,21 +168,26 @@ export class TenantLifecycleService implements OnModuleDestroy {
       });
       if (!message?.to.length) continue;
       const days = Number(notice.kind.replace("deletion_", "").replace("d", ""));
-      await this.mail.sendMail({
-        from: process.env.SMTP_FROM,
-        to: message.to,
-        subject: `Astrama: ${message.name} data deletion in ${days} day${days === 1 ? "" : "s"}`,
-        text: brandedText(
-          `Your organisation ${message.name} (${message.slug}) is read-only. Its data is scheduled for deletion on ${message.deleteAfter?.toISOString() ?? "the scheduled date"}. Export your data or contact billing before that date.\n\n${tenantOrigin(message.slug)}/billing`,
-          message.branding,
-        ),
-      });
-      await this.db.withTenant(tenant.tenant_id, (tx) =>
-        tx.tenantLifecycleNotice.updateMany({
+      const failure = await this.db.withTenant(tenant.tenant_id, async (tx) => {
+        try {
+          await sendTenantMail(this.mail, tx, tenant.tenant_id, {
+            to: message.to,
+            subject: `Astrama: ${message.name} data deletion in ${days} day${days === 1 ? "" : "s"}`,
+            text: brandedText(
+              `Your organisation ${message.name} (${message.slug}) is read-only. Its data is scheduled for deletion on ${message.deleteAfter?.toISOString() ?? "the scheduled date"}. Export your data or contact billing before that date.\n\n${tenantOrigin(message.slug)}/billing`,
+              message.branding,
+            ),
+          });
+        } catch {
+          return true;
+        }
+        await tx.tenantLifecycleNotice.updateMany({
           where: { id: notice.id, sentAt: null },
           data: { sentAt: now },
-        }),
-      );
+        });
+        return false;
+      });
+      if (failure) throw new Error("SMTP delivery failed");
     }
   }
 

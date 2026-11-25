@@ -88,6 +88,14 @@ export const notificationPreferenceSchema = z
   .object({ mode: z.enum(["immediate", "daily", "off"]) })
   .strict();
 export const notificationPreferenceViewSchema = notificationPreferenceSchema;
+export type EmailHealthView = {
+  sent: number;
+  failed: number;
+  queued: number;
+  outboundUsed: number;
+  outboundLimit: number | null;
+};
+
 export const sessionViewSchema = z.object({
   user: z.object({
     id: z.string(),

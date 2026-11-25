@@ -10,7 +10,7 @@ Latest handoff: [19 November local testing](reviews/2026-11-19-local-testing.md)
 
 - **GitHub CI green:** [45523449816](https://github.com/arvindjonn09/ticket/actions/runs/45523449816), including 196 API tests (1 skipped), 24 standard browser cases, 6 hosted journeys, backup checks, the 219-package licence gate, high-severity audit and full-tree/full-history gitleaks. Corrected the public-site non-root cache/API proxy, isolated the operator billing test provider, and pinned patched effect 3.22.1 without audit suppression.
 
-- **Next packet:** BR-01 implemented and locally verified (9 focused PostgreSQL/Mailpit tests, 18 web tests, 2 Chromium accessibility/mobile journeys; build/typecheck/lint pass), then EM-02, EM-01 (mail-intake), MS-01, EM-03, one commit with tests each. Open-source mail is required for testing; custom domains and legal/tax work remain deferred. OD-9 own-email plan entitlement remains an owner decision.
+- **Next packet:** BR-01 implemented and locally verified (9 focused PostgreSQL/Mailpit tests, 18 web tests, 2 Chromium accessibility/mobile journeys; build/typecheck/lint pass), EM-02 implemented and locally verified (31 focused checks), then EM-01 (mail-intake), MS-01, EM-03, one commit with tests each. Open-source mail is required for testing; custom domains and legal/tax work remain deferred. OD-9 own-email plan entitlement remains an owner decision.
 
 ## Current position
 
@@ -65,6 +65,8 @@ Latest handoff: [19 November local testing](reviews/2026-11-19-local-testing.md)
 - **Final local check at 16:18 AEDT:** API 168 passed / 1 skipped; changed-source formatting, whitespace and gitleaks pass; changed-source ESLint reports 0 errors / 7 file-length or complexity warnings. Disposable billing/onboarding test containers and networks were removed; logs and browser failure artifacts remain local. Initial owner files outside the intended edited paths match the initial snapshot. No commits, pushes, live Stripe calls or authorization-policy default were made. The hosted browser spec/harness/CI job remain uncommitted drafts pending the staffing decision.
 
 ## Agent activity
+
+- **EM-02 sender — implemented, 25 November 2026:** native `/root/em02_sender`, requested `gpt-6.1-sol` high, owns shared platform sender and existing mailer source files. Parent owns schema, budgets, health API/UI, deployment docs and integration. Worker API typecheck, 4 unit tests, formatting and lint (0 errors) pass. Parent review and 31 focused PostgreSQL/SMTP/S3/inbound/budget tests pass; build, typecheck, lint (0 errors) and production-preflight checks pass. Start/finish recorded this date; elapsed and runtime tokens not reported. No delegation or owner decisions. Handoff: parent integrates and commits.
 
 - **BR-01 frontend — complete, 25 November 2026:** native `/root/br01_web`, requested `gpt-6.1-sol` medium; owns `apps/web/**` and `e2e/branding.spec.ts`. Start recorded 12:17 AEDT; finish/elapsed not runtime-reported. Added shared i18n footer and host/session wiring. Checks: 18 web tests, build/typecheck, lint with 0 errors, 2 Chromium journeys including mobile visibility and light/dark WCAG AA contrast. Parent reviewed and owns API/schema/mail integration and commit. No further delegation, dependencies, or unresolved questions. Runtime tokens not reported.
 

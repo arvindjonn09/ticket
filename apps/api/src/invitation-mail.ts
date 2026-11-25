@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { createTransport } from "nodemailer";
+import { createPlatformTransport, sendTenantMail } from "./platform-mail.js";
 import { Database, lockConfiguration } from "./database.js";
 import { decryptSecret } from "./mfa.js";
 import { platformMode, tenantOrigin } from "./platform.js";
@@ -9,18 +9,7 @@ import { brandedMailText } from "./branding.js";
 @Injectable()
 export class InvitationMailer {
   private dispatching = false;
-  private readonly mail = createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 1025),
-    secure: process.env.SMTP_SECURE === "true",
-    requireTLS: process.env.NODE_ENV === "production" && process.env.SMTP_SECURE !== "true",
-    ...(process.env.SMTP_USER
-      ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }
-      : {}),
-    connectionTimeout: 3000,
-    greetingTimeout: 3000,
-    socketTimeout: 5000,
-  });
+  private readonly mail = createPlatformTransport();
   constructor(private readonly db: Database) {}
   async dispatch() {
     if (this.dispatching) return;
@@ -80,8 +69,7 @@ export class InvitationMailer {
             !parsed.hash.startsWith("#activate?")
           )
             throw new Error("Invalid invitation destination");
-          await this.mail.sendMail({
-            from: process.env.SMTP_FROM,
+          await sendTenantMail(this.mail, tx, tenantId, {
             to: user.email,
             subject: "Set up your service desk account",
             text: await brandedMailText(

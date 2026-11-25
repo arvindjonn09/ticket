@@ -60,12 +60,13 @@ a reviewed streaming procedure.
 Hosted production requires an explicit positive safe integer for each value;
 the example leaves them blank for the owner's deployment/customer policy:
 
-| Variable                      | UTC window | Charged admission                                                  |
-| ----------------------------- | ---------- | ------------------------------------------------------------------ |
-| `TENANT_REQUESTS_PER_MINUTE`  | Minute     | Authenticated tenant API requests, excluding authentication routes |
-| `TENANT_UPLOAD_BYTES_PER_DAY` | Day        | Upload bytes, including admitted inbound attachments               |
-| `TENANT_INBOUND_PER_HOUR`     | Hour       | New authenticated inbound messages; duplicate retries are free     |
-| `TENANT_EXPORTS_PER_DAY`      | Day        | CSV exports and new private operator export jobs                   |
+| Variable                      | UTC window | Charged admission                                                     |
+| ----------------------------- | ---------- | --------------------------------------------------------------------- |
+| `TENANT_REQUESTS_PER_MINUTE`  | Minute     | Authenticated tenant API requests, excluding authentication routes    |
+| `TENANT_UPLOAD_BYTES_PER_DAY` | Day        | Upload bytes, including admitted inbound attachments                  |
+| `TENANT_INBOUND_PER_HOUR`     | Hour       | New authenticated inbound messages; duplicate retries are free        |
+| `TENANT_OUTBOUND_PER_HOUR`    | Hour       | Tenant notification, invitation, recovery and lifecycle SMTP attempts |
+| `TENANT_EXPORTS_PER_DAY`      | Day        | CSV exports and new private operator export jobs                      |
 
 Single-company mode is unchanged. Local hosted development may omit values.
 PostgreSQL admission is atomic across replicas and isolated per tenant. HTTP429

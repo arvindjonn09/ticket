@@ -16,7 +16,7 @@ import {
 import { hash, argon2id } from "argon2";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { createTransport } from "nodemailer";
+import { createPlatformTransport, platformMailDomain } from "../../platform-mail.js";
 import { createChallenge, verifySolution } from "altcha-lib/v1";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -58,18 +58,7 @@ function isUniqueViolation(error: unknown) {
 
 @Injectable()
 export class SaasService {
-  private readonly mail = createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 1025),
-    secure: process.env.SMTP_SECURE === "true",
-    requireTLS: process.env.NODE_ENV === "production" && process.env.SMTP_SECURE !== "true",
-    ...(process.env.SMTP_USER
-      ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }
-      : {}),
-    connectionTimeout: 3000,
-    greetingTimeout: 3000,
-    socketTimeout: 5000,
-  });
+  private readonly mail = createPlatformTransport();
 
   constructor(private readonly db: Database) {}
 
@@ -415,7 +404,7 @@ export class SaasService {
               : `Use this single-use link to continue:\n${url}\n\nIf you did not request this email, you can ignore it.`,
             { hideBranding: false, brandingUrl: brandingUrl(""), locale: "en" },
           ),
-          messageId: `<public-${item.id}@${new URL(this.publicSiteOrigin()).hostname}>`,
+          messageId: `<public-${item.id}@${platformMailDomain()}>`,
         });
         await this.db.publicMailOutbox.update({
           where: { id: item.id },

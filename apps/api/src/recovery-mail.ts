@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { createTransport } from "nodemailer";
+import { createPlatformTransport, sendTenantMail } from "./platform-mail.js";
 import { Database } from "./database.js";
 import { decryptSecret } from "./mfa.js";
 import { RecoveryService } from "./recovery.js";
@@ -20,18 +20,7 @@ type RecoveryMail = {
 @Injectable()
 export class RecoveryMailer {
   private dispatching = false;
-  private readonly mail = createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 1025),
-    secure: process.env.SMTP_SECURE === "true",
-    requireTLS: process.env.NODE_ENV === "production",
-    ...(process.env.SMTP_USER
-      ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }
-      : {}),
-    connectionTimeout: 3000,
-    greetingTimeout: 3000,
-    socketTimeout: 5000,
-  });
+  private readonly mail = createPlatformTransport();
   constructor(
     private readonly db: Database,
     private readonly recovery: RecoveryService,
@@ -89,8 +78,7 @@ export class RecoveryMailer {
             !parsed.hash.startsWith("#reset-password?")
           )
             throw new Error("Invalid recovery destination");
-          await this.mail.sendMail({
-            from: process.env.SMTP_FROM,
+          await sendTenantMail(this.mail, tx, tenantId, {
             to: user.email,
             subject: "Reset your service desk password",
             text: await brandedMailText(

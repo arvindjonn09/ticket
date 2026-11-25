@@ -18,6 +18,7 @@ import { AutomationPanel } from "../../automation";
 import { SlaPanel } from "../../sla";
 import { DataPolicyPanel } from "../../data-policy";
 import { OperationsPanel } from "../../operations";
+import { EmailHealthPanel } from "../../email-health";
 import { InboundMailPanel } from "../../inbound-mail";
 import { OperatorAccessPanel } from "../../operator-access";
 
@@ -580,6 +581,7 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
                 <option value="inbound-mail">Inbound email</option>
                 <option value="data-policy">{t("dataPolicySettings")}</option>
                 <option value="operations">{t("serviceHealth")}</option>
+                <option value="email-health">{t("emailHealth:title")}</option>
                 {platform.data?.mode === "hosted" && (
                   <option value="operator-access">{t("operatorAccess:title")}</option>
                 )}
@@ -609,6 +611,7 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
               <DataPolicyPanel session={session} />
             </div>
             {section === "operations" && <OperationsPanel />}
+            {section === "email-health" && <EmailHealthPanel />}
             <div hidden={section !== "users"}>
               <UsersPanel session={session} />
             </div>

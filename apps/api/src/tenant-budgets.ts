@@ -5,6 +5,7 @@ export const tenantLimitVariables = {
   requests: "TENANT_REQUESTS_PER_MINUTE",
   uploads: "TENANT_UPLOAD_BYTES_PER_DAY",
   inbound: "TENANT_INBOUND_PER_HOUR",
+  outbound: "TENANT_OUTBOUND_PER_HOUR",
   exports: "TENANT_EXPORTS_PER_DAY",
 } as const;
 export function tenantBudgetConfigError(env: NodeJS.ProcessEnv = process.env) {
@@ -32,7 +33,8 @@ export async function reserveTenantBudget(
   if (!Number.isSafeInteger(amount) || amount < 0) throw new Error("Invalid budget amount");
   const limit = BigInt(text),
     quantity = BigInt(amount);
-  const duration = kind === "requests" ? 60000 : kind === "inbound" ? 3600000 : 86400000;
+  const duration =
+    kind === "requests" ? 60000 : ["inbound", "outbound"].includes(kind) ? 3600000 : 86400000;
   const start = new Date(Math.floor(now.getTime() / duration) * duration);
   const accepted = await tx.$queryRaw<{ used: bigint }[]>`
     INSERT INTO tenant_budgets(tenant_id,kind,window_start,used)

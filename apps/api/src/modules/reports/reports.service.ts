@@ -4,6 +4,7 @@ import { canReadTicket, hasActiveGroup, isGroupAgent, terminalStates } from "@as
 import { z } from "zod";
 import { AuthRequest, SessionGuard } from "../auth/auth.service.js";
 import { Database } from "../../database.js";
+import { reserveTenantBudget } from "../../tenant-budgets.js";
 import { TicketsService } from "../tickets/tickets.service.js";
 
 export function csvCell(value: string | number): string {
@@ -191,6 +192,9 @@ export class ReportsController {
   @Get("reports/export") async export(@Req() req: AuthRequest, @Res() reply: FastifyReply) {
     if (!["agent", "admin"].includes(req.auth.role))
       throw new ForbiddenException("Staff access required");
+    await this.db.withTenant(req.auth.tenantId, (tx) =>
+      reserveTenantBudget(tx, req.auth.tenantId, "exports"),
+    );
     const { tickets, limitReached } = await this.tickets.list(req.auth, req.query);
     await this.db.withTenant(req.auth.tenantId, (tx) =>
       tx.configAudit.create({

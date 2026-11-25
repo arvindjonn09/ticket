@@ -22,6 +22,11 @@ https:// {
 	}
 	@public host {$PUBLIC_SITE_HOST}
 	@operator host {$OPERATOR_SITE_HOST}
+	@status host {$STATUS_SITE_HOST:status.invalid}
+	handle @status {
+		# Kuma uses WebSockets; Caddy forwards the upgrade. Bootstrap privately first.
+		reverse_proxy status:3001
+	}
 	handle @operator {
 		root * /operator
 		handle /api/internal/tls-allowed {

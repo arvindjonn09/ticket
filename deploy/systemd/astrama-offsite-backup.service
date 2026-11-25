@@ -1,5 +1,5 @@
 [Unit]
-Description=Astrama encrypted offsite backup and restore verification
+Description=Astrama Restic offsite backup and isolated restore verification
 OnFailure=astrama-backup-alert.service
 
 [Service]

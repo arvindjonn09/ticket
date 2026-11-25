@@ -591,6 +591,11 @@ The owner reconfirmed these implementation decisions on 12 November 2026:
   with a reason. Sensitive Security tickets remain restricted; confirm this in
   the pilot. Because group members can read all tickets, support-agent MFA is
   required.
+- **D1 extension — confirmed 18 November 2026:** active administrators who belong
+  to a support group may perform the same support work as agents in that group.
+  Membership, tenant isolation, sensitive-ticket restrictions and MFA still apply.
+  New organisations start with their initial administrator in the starter triage
+  queue so the first ticket has a staffed destination after account activation.
 - **D2 — email setup:** configure the real mailbox only at the final production
   step. During implementation, use Mailpit, a signed test webhook, and a smoke
   organisation.
@@ -904,3 +909,7 @@ workspace.
 Customer-owned custom domains (`help.theircompany.com`), SSO, and per-tenant
 email domains. Leave the host-resolution code able to add a `custom_domains`
 lookup later, but do not build it.
+
+## 26. Branding and customer email
+
+Source of truth: [custom-domain-and-email.md](docs/specs/custom-domain-and-email.md), updated 25 November 2026. Step 0 publishes the existing work in four commits with CI and gitleaks green before implementation. Then build BR-01, EM-02, EM-01 (mail-intake), MS-01 (mox testing profile and guided operator/organisation mail settings), and EM-03 in order, one commit with tests each. Testing uses open-source mail; paid SMTP relays must be configurable from the operator UI without redeployment. CD-01 custom domains and legal/tax/service commitments are deferred. OD-9 own-email plan entitlement remains open. Keep deployment domains and credentials configured, not invented.

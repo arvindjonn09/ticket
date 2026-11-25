@@ -36,6 +36,8 @@ export async function cleanupFixture(
         "catalog_items",
         "config_audits",
         "sessions",
+        "operator_support_grants",
+        "operator_jobs",
         "memberships",
         "subcategories",
         "categories",

@@ -1,5 +1,11 @@
 # Production installation
 
+Hosted deployments also follow [operator-console.md](operator-console.md) for
+separate operator accounts and [hosted-operations.md](hosted-operations.md) for
+tenant restore, explicit fairness allowances, tenant-tagged alerts and the
+optional private-first status page. The single-company procedure below remains
+available. Do not fill production business values from local test fixtures.
+
 This is the operator procedure for a Linux Docker host. A clean-machine
 installation has not yet been rehearsed; do not treat this document as
 production validation. Caddy obtains and renews the site's TLS certificate
@@ -16,7 +22,9 @@ directory and copy `compose.production.yaml`, `infra/Caddyfile`, the
 pulls the published images; it does not build them.
 
 Generate the private env file and secrets, then set the selected release tag,
-SMTP, and alert address:
+SMTP, alert address, and hosted public-site hostname/origins before enabling
+hosted mode. `PUBLIC_SITE_HOST` must match the hostname in `PUBLIC_SITE_ORIGIN`;
+the example `change-me.example` values are placeholders, not a domain choice.
 
 ```sh
 node scripts/create-production-secrets.mjs help.example.com
@@ -37,7 +45,7 @@ node scripts/check-production.mjs .env.production
 docker compose --env-file .env.production -f compose.production.yaml config --quiet
 docker compose --env-file .env.production -f compose.production.yaml pull
 docker compose --env-file .env.production -f compose.production.yaml up -d db storage scanner setup
-docker compose --env-file .env.production -f compose.production.yaml up -d --wait api worker web
+docker compose --env-file .env.production -f compose.production.yaml up -d --wait api worker lifecycle web
 ```
 
 Use the one-off operator provisioning command in
@@ -49,63 +57,65 @@ verified.
 
 ## Unattended monitoring and backups
 
-Configure an rclone remote with write/delete access limited to this installation's
-backup prefix. Keep its config private. Create `/etc/astrama/backup.env` with
-owner-only permissions and the deployment values below; the rclone remote must
-end in `/astrama/backups` so retention cannot target a bucket or remote root.
+Use the pinned native Restic container and custody procedure in
+[Restic backup operations](restic-backups.md). Create `/etc/astrama/backup.env`
+with owner-only permissions and explicit deployment values:
 
 ```sh
 APP_DOMAIN=help.example.com
-BACKUP_OFFSITE_REMOTE=offsite:company/astrama/backups
-BACKUP_RETENTION_DAYS=30
+RESTIC_REMOTE_REPOSITORY=s3:https://storage.example.com/bucket/astrama/backups
+BACKUP_RETENTION_DAYS=<explicit-approved-days>
 BACKUP_KEY_FILE=/etc/astrama/private-backup-key
-RCLONE_CONFIG=/etc/astrama/rclone.conf
+AWS_ACCESS_KEY_ID=<private-offsite-key>
+AWS_SECRET_ACCESS_KEY=<private-offsite-secret>
 ```
 
-Create `/etc/astrama` owned by the `astrama` service account with mode `700`,
-then create the key file once by running the first verified production backup
-with `--init-key`:
+The remote must be dedicated to this installation, limited to that prefix, and
+initialised separately with the same backup password. No default customer
+retention is selected here. Keep credentials and the backup password in separate
+private custody; never put them in source control. Retain the encrypted legacy
+archives and their original key; the restore command still reads them.
+
+Create `/etc/astrama` owned by the service account with mode 700 and initialise
+the private local key/repository with the first verified backup:
 
 ```sh
 sudo install -d -o astrama -g astrama -m 700 /etc/astrama
 sudo -u astrama env BACKUP_KEY_FILE=/etc/astrama/private-backup-key node scripts/backup-stack.mjs backup --verify --init-key --compose compose.production.yaml --project astrama-production --env-file .env.production
 ```
 
-Keep a second copy of that backup key in a separate secret vault; never copy it
-into the offsite backup directory. Set the backup key and rclone configuration
-files to mode `600`. Create `/opt/astrama/.local-backups` owned by the service
-account with mode `700`.
+Keep another copy of the backup key in an independent secret vault. Protect the
+key/scheduler environment with mode 600 and `/opt/astrama/.local-backups` with
+mode 700. Preserve the entire Restic repository: pointer directories alone do
+not contain backup data.
 
-Install the five unit files from `deploy/systemd/` under
-`/etc/systemd/system/`, then enable the timers:
+Install the five unit files from `deploy/systemd/` under `/etc/systemd/system/`,
+then enable the timers:
 
 ```sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now astrama-offsite-backup.timer astrama-host-watch.timer
 ```
 
-The daily backup captures and verifies the database, object store, and
-application key, copies encrypted snapshots to the remote, checks the copied
-files, then applies the retention period. A failed backup or offsite check
-triggers an email alert. The five-minute host watcher alerts when root disk
-usage reaches 80 percent or the live certificate has fewer than 14 days left.
-Configure a separate external HTTPS uptime monitor for the public hostname;
-this cannot alert if the host or its internet connection is down.
+Each scheduled backup captures the database, objects and application key,
+verifies a full isolated restore, copies native encrypted snapshots, checks the
+remote data, then applies the explicitly configured retention. Failures attempt
+an operator email alert. The host watcher checks disk and certificate expiry.
+Use an independent external HTTPS monitor for whole-host/network outages.
+Real offsite IAM, connectivity and alert delivery must be tested before launch.
 
 ## Replacement-host restore drill
 
-Use a second clean Linux VM with Docker Compose, Node 24, rclone access to the
-backup prefix, and the separately retrieved backup key. Copy the production
-release directory and `.env.production` with mode `600`, pull the exact
-`RELEASE_TAG` images, then copy one encrypted verified backup directory from
-the remote into `.local-backups/`. Run:
+Use a second clean Linux VM with Docker Compose, Node 24, the exact released
+images, private deployment configuration, access to the remote Restic prefix
+and the separately retrieved backup password. Follow
+[replacement-host recovery](restic-backups.md#recover-on-a-replacement-host) to
+copy the required backup group into an empty private repository. Then run:
 
 ```sh
 BACKUP_KEY_FILE=/etc/astrama/private-backup-key node scripts/backup-stack.mjs restore --verify --backup .local-backups/backup-<timestamp>-<id> --compose compose.production.yaml --project astrama-production --env-file .env.production
 ```
 
-Record the release tag, backup timestamp, restore result, and elapsed time. The
-verification restores into isolated temporary database and object-store
-volumes; it never overwrites a live stack. This drill has not yet been run on a
-separate host and must be recorded before declaring CX-07 operationally
-validated.
+Record the release, snapshot time, restore result and elapsed time. Verification
+uses isolated temporary database/object volumes and never overwrites a live
+stack. A local drill does not replace this independent-host exercise.

@@ -30,6 +30,7 @@ import { operationalHealth } from "./operations.js";
 import { queueUserInvitation, occupiedSeats } from "./modules/users/users.service.js";
 import { readDataPolicy } from "./modules/organisation/data-lifecycle.service.js";
 import { paymentProvider } from "./modules/billing/payment-provider.js";
+import { reserveTenantBudget } from "./tenant-budgets.js";
 
 @Injectable()
 export class OperatorConsoleService {
@@ -172,6 +173,7 @@ export class OperatorConsoleService {
           if (input.action === "export") {
             if (!tenant.active) throw new ForbiddenException("Organisation is unavailable");
             await operatorSupportAccess(tx, auth.id, tenant.id);
+            await reserveTenantBudget(tx, tenant.id, "exports");
           } else if (input.action === "mfa-recovery") {
             const admin = await tx.user.findFirst({
               where: {

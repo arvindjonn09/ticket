@@ -2,38 +2,24 @@ import { spawn } from "node:child_process";
 import { Buffer } from "node:buffer";
 import console from "node:console";
 import process from "node:process";
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  randomUUID,
-  timingSafeEqual,
-} from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
-import {
-  appendFile,
-  chmod,
-  lstat,
-  mkdir,
-  open,
-  readFile,
-  realpath,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { chmod, lstat, mkdir, open, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath, URL } from "node:url";
-import { parseArgs } from "node:util";
+import { parseArgs, isDeepStrictEqual } from "node:util";
+import { decryptStream } from "./backup-legacy.mjs";
+export { encryptStream, decryptStream } from "./backup-legacy.mjs";
+import { resticStore, resticPointer, resticFormat } from "./backup-restic.mjs";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backupRoot = resolve(workspace, ".local-backups");
-const magic = Buffer.from("ASTRAMA-BACKUP-1\n");
 const format = "astrama-stack-backup-v1";
 const resourcePattern = /^astrama-restore-[a-f0-9]{32}-(network|db|files|pg|storage|api|copy)$/;
 const names = ["database.dump.enc", "storage.tar.enc", "secrets.json.enc"];
+// Read to EOF: tar's end markers can precede trailing record padding on the pipe.
+export const restoreTarCommand = ["tar", "--ignore-zeros", "-C", "/data", "-xf", "-"];
 const children = new Set();
 let interrupted = false,
   cleaningUp = false;
@@ -63,42 +49,6 @@ export async function safeBackupPath(path) {
     cursor = parent;
   }
   return target;
-}
-export async function encryptStream(source, path, key, identity) {
-  const iv = randomBytes(12),
-    cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(Buffer.from(`${format}:${identity}`));
-  await writeFile(path, Buffer.concat([magic, iv]), { flag: "wx", mode: 0o600 });
-  await pipeline(source, cipher, createWriteStream(path, { flags: "a", mode: 0o600 }));
-  await appendFile(path, cipher.getAuthTag());
-}
-export async function decryptStream(path, target, key, identity) {
-  const handle = await open(path, "r");
-  let size, header, tag;
-  try {
-    size = (await handle.stat()).size;
-    if (size < magic.length + 12 + 16) throw new Error("Truncated encrypted artifact");
-    header = Buffer.alloc(magic.length + 12);
-    await handle.read(header, 0, header.length, 0);
-    if (!header.subarray(0, magic.length).equals(magic))
-      throw new Error("Unknown encrypted artifact format");
-    tag = Buffer.alloc(16);
-    await handle.read(tag, 0, 16, size - 16);
-  } finally {
-    await handle.close();
-  }
-  const decipher = createDecipheriv("aes-256-gcm", key, header.subarray(magic.length));
-  decipher.setAAD(Buffer.from(`${format}:${identity}`));
-  decipher.setAuthTag(tag);
-  await pipeline(
-    createReadStream(path, { start: header.length, end: size - 17 }),
-    decipher,
-    target,
-  );
-}
-async function encryptJson(value, path, key, identity) {
-  const { Readable } = await import("node:stream");
-  await encryptStream(Readable.from([JSON.stringify(value)]), path, key, identity);
 }
 async function decryptJson(path, key, identity) {
   const { Writable } = await import("node:stream");
@@ -305,7 +255,7 @@ try {
    if(!/^[a-z_][a-z0-9_]*$/.test(tablename)) throw new Error('Unsupported public table name');
    counts[tablename]=String((await db.$queryRawUnsafe('SELECT count(*) AS total FROM public."'+tablename+'"'))[0].total);
   }
-  const secrets={mfa:0,invitations:0,recoveries:0,recoveryRequests:0};
+  const secrets={mfa:0,invitations:0,recoveries:0,recoveryRequests:0,operators:0,publicMail:0,inboundMail:0};
   for(const row of await db.user.findMany({where:{mfaSecret:{not:null}},select:{id:true,tenantId:true,mfaSecret:true}})) {
    const value=decryptSecret(row.mfaSecret,row.tenantId+':'+row.id); secrets.mfa++;
    if(fixture && row.id===fixture.userId && value!=='JBSWY3DPEHPK3PXP') throw new Error('Restored MFA fixture differs');
@@ -322,6 +272,14 @@ try {
    const value=JSON.parse(decryptSecret(row.encrypted_request,'recovery-request:'+row.id)); secrets.recoveryRequests++;
    if(typeof value.organisation!=='string'||typeof value.email!=='string') throw new Error('Invalid restored recovery request');
    if(fixture && row.id===fixture.requestId && (value.organisation!==fixture.slug||value.email!=='backup-fixture@example.invalid')) throw new Error('Restored recovery request fixture differs');
+  }
+  for(const [table,column,kind] of [['operators','encrypted_mfa_secret','operators'],['public_mail_outbox','encrypted_url','publicMail'],['inbound_mail_settings','encrypted_webhook_secret','inboundMail']]) {
+   const [present]=await db.$queryRawUnsafe('SELECT to_regclass($1) IS NOT NULL AS present','public.'+table);
+   if(!present.present) continue; // A retained v1 backup may predate these modules.
+   for(const row of await db.$queryRawUnsafe('SELECT * FROM '+table+' WHERE '+column+' IS NOT NULL')) {
+    const identity=kind==='operators'?'operator:'+row.id:kind==='publicMail'?row.identity:'inbound-mail:'+row.tenant_id;
+    decryptSecret(row[column],identity);secrets[kind]++;
+   }
   }
   const objects=[];
   for(const bucket of (await s3.send(new ListBucketsCommand({}))).Buckets??[]) {
@@ -377,7 +335,23 @@ async function sourceStack(docker, options) {
     composeEnvironment.push("--env-file", path);
   }
   const services = {};
-  for (const name of ["db", "storage", "api", "worker", "web"]) {
+  const declaredServices = new Set(
+    (
+      await run([
+        ...docker,
+        "compose",
+        ...composeEnvironment,
+        "-f",
+        compose,
+        "-p",
+        project,
+        "config",
+        "--services",
+      ])
+    ).split(/\r?\n/),
+  );
+  for (const name of ["db", "storage", "api", "worker", "web", "lifecycle"]) {
+    if (name === "lifecycle" && !declaredServices.has(name)) continue;
     const id = await run([
       ...docker,
       "compose",
@@ -391,6 +365,7 @@ async function sourceStack(docker, options) {
       "-q",
       name,
     ]);
+    if (!id && name === "lifecycle") continue;
     if (!id || id.includes("\n"))
       throw new Error(`Exactly one ${name} Compose service is required`);
     const [container] = JSON.parse(await run([...docker, "inspect", id]));
@@ -446,17 +421,30 @@ async function sourceStack(docker, options) {
     throw new Error("Storage credentials and private bucket are required");
   const ownerUrl = new URL(`postgresql://${owner}@db:5432/${databaseName}`);
   ownerUrl.password = database.POSTGRES_PASSWORD;
+  const images = {
+    api: services.api.Image,
+    postgres: services.db.Image,
+    storage: services.storage.Image,
+  };
+  // A running container can reference an image removed after a tag was rebuilt.
+  // Never replace it with the tag's current contents: restore must use exact images.
+  for (const [component, image] of Object.entries(images)) {
+    try {
+      const [available] = JSON.parse(await run([...docker, "image", "inspect", image]));
+      if (available?.Id !== image) throw new Error("Image identity differs");
+    } catch {
+      throw new Error(
+        `The running ${component} service's immutable image is unavailable. Restore its archived image or deliberately recreate that service from the intended release before backup. No source services were stopped.`,
+      );
+    }
+  }
   return {
     services,
     network,
     volume: mount.Name,
     ownerUrl: ownerUrl.toString(),
     secrets,
-    images: {
-      api: services.api.Image,
-      postgres: services.db.Image,
-      storage: services.storage.Image,
-    },
+    images,
   };
 }
 
@@ -567,8 +555,37 @@ async function removeResource(docker, type, name, id) {
   ]);
 }
 
-export async function verifyBackup(docker, directory, key) {
+async function readBackup(docker, directory, key) {
   await safeBackupPath(directory);
+  let current = false;
+  try {
+    await lstat(resolve(directory, "restic.json"));
+    current = true;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (current) {
+    const pointer = await resticPointer(directory);
+    const store = await resticStore(docker, key, backupRoot, { child, run, secure });
+    await store.check();
+    const manifest = await store.getJson(pointer.backupId, "manifest.json");
+    if (
+      manifest.format !== resticFormat ||
+      manifest.backupId !== pointer.backupId ||
+      !manifest.images ||
+      !manifest.snapshot ||
+      !isDeepStrictEqual(manifest.artifacts, ["database.dump", "storage.tar", "secrets.json"])
+    )
+      throw new Error("Invalid authenticated Restic manifest");
+    const secrets = await store.getJson(pointer.backupId, "secrets.json");
+    validKey(secrets.mfaEncryptionKey);
+    return {
+      manifest,
+      secrets,
+      readArtifact: (name, target) => store.dump(pointer.backupId, name, target),
+    };
+  }
+  // Legacy retained backups are read-only; new writes use Restic's native format.
   const manifest = await decryptJson(resolve(directory, "manifest.json.enc"), key, "manifest");
   if (
     manifest.format !== format ||
@@ -582,10 +599,26 @@ export async function verifyBackup(docker, directory, key) {
     const expected = manifest.artifacts.find((artifact) => artifact.name === name);
     const path = await safeBackupPath(resolve(directory, name));
     if (!expected || expected.sha256 !== (await hashFile(path)))
-      throw new Error("Encrypted artifact SHA-256 differs from the authenticated manifest");
+      throw new Error("Encrypted artifact SHA-256 differs from authenticated manifest");
   }
   const secrets = await decryptJson(resolve(directory, "secrets.json.enc"), key, "secrets");
   validKey(secrets.mfaEncryptionKey);
+  return {
+    manifest,
+    secrets,
+    readArtifact: (name, target) =>
+      decryptStream(
+        resolve(directory, name + ".enc"),
+        target,
+        key,
+        name === "database.dump" ? "database" : "storage",
+      ),
+  };
+}
+
+export async function verifyBackup(docker, directory, key) {
+  const { manifest, secrets, readArtifact } = await readBackup(docker, directory, key);
+  let stage = "initialise";
   const id = randomUUID().replaceAll("-", ""),
     prefix = `astrama-restore-${id}`;
   const network = `${prefix}-network`,
@@ -655,6 +688,7 @@ export async function verifyBackup(docker, directory, key) {
         input: `CREATE ROLE astrama_app LOGIN PASSWORD '${appPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;\nCREATE ROLE astrama_auth_reader NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;\n`,
       },
     );
+    stage = "database-stream";
     const restore = child([
       ...docker,
       "exec",
@@ -669,19 +703,12 @@ export async function verifyBackup(docker, directory, key) {
     ]);
     restore.process.stdout.resume();
     try {
-      await Promise.all([
-        decryptStream(
-          resolve(directory, "database.dump.enc"),
-          restore.process.stdin,
-          key,
-          "database",
-        ),
-        restore.done,
-      ]);
+      await Promise.all([readArtifact("database.dump", restore.process.stdin), restore.done]);
     } catch (error) {
       restore.process.kill();
       throw error;
     }
+    stage = "storage-stream";
     const unpack = child([
       ...docker,
       "run",
@@ -696,22 +723,16 @@ export async function verifyBackup(docker, directory, key) {
       "--mount",
       `type=volume,source=${filesVolume},target=/data`,
       manifest.images.postgres,
-      "tar",
-      "-C",
-      "/data",
-      "-xf",
-      "-",
+      ...restoreTarCommand,
     ]);
     unpack.process.stdout.resume();
     try {
-      await Promise.all([
-        decryptStream(resolve(directory, "storage.tar.enc"), unpack.process.stdin, key, "storage"),
-        unpack.done,
-      ]);
+      await Promise.all([readArtifact("storage.tar", unpack.process.stdin), unpack.done]);
     } catch (error) {
       unpack.process.kill();
       throw error;
     }
+    stage = "storage-start";
     await run(
       [
         ...docker,
@@ -741,6 +762,7 @@ export async function verifyBackup(docker, directory, key) {
       { env: { RUSTFS_ACCESS_KEY: secrets.s3AccessKey, RUSTFS_SECRET_KEY: secrets.s3SecretKey } },
     );
     artifacts.push(["container", storage]);
+    stage = "data-object-secret-checks";
     const restored = await waitStorage(
       docker,
       manifest.images.api,
@@ -750,10 +772,15 @@ export async function verifyBackup(docker, directory, key) {
       manifest.fixture,
       id,
     );
-    if (JSON.stringify(restored) !== JSON.stringify(manifest.snapshot))
+    const expectedSnapshot = {
+      ...manifest.snapshot,
+      secrets: { operators: 0, publicMail: 0, inboundMail: 0, ...manifest.snapshot.secrets },
+    };
+    if (!isDeepStrictEqual(restored, expectedSnapshot))
       throw new Error(
         "Restored table counts, object byte hashes or decryptable secret counts differ",
       );
+    stage = "runtime-role-check";
     const appUrl = new URL(ownerUrl);
     appUrl.username = "astrama_app";
     appUrl.password = appPassword;
@@ -790,7 +817,7 @@ export async function verifyBackup(docker, directory, key) {
       decryptedSecrets: restored.secrets,
     };
   } catch (error) {
-    primaryError = error;
+    primaryError = new Error(`Isolated restore failed at ${stage} (${error.code ?? error.name}).`);
   } finally {
     cleaningUp = true;
     // Only generated names with our UUID label are eligible for removal. No live
@@ -818,6 +845,12 @@ export async function verifyBackup(docker, directory, key) {
 }
 
 async function captureBackup(docker, options, key) {
+  const store = await resticStore(docker, key, backupRoot, {
+    child,
+    run,
+    secure,
+    initialize: options["init-key"] || options["init-repository"],
+  });
   const stack = await sourceStack(docker, options);
   if (timingSafeEqual(key, validKey(stack.secrets.mfaEncryptionKey)))
     throw new Error("Backup encryption key must differ from the application MFA key");
@@ -837,9 +870,9 @@ async function captureBackup(docker, options, key) {
     objectKey: `_backup-verification/${id}.bin`,
     objectBytes: randomBytes(4096).toString("base64"),
   };
-  const appContainers = ["web", "api", "worker"]
+  const appContainers = ["web", "api", "worker", "lifecycle"]
     .map((name) => stack.services[name])
-    .filter((container) => container.State.Running)
+    .filter((container) => container?.State.Running)
     .map((container) => container.Id);
   let storageStopped = false,
     seeded = false,
@@ -887,10 +920,7 @@ async function captureBackup(docker, options, key) {
     ]);
     dump.process.stdin.end();
     try {
-      await Promise.all([
-        encryptStream(dump.process.stdout, resolve(directory, names[0]), key, "database"),
-        dump.done,
-      ]);
+      await Promise.all([store.put(id, "database.dump", dump.process.stdout), dump.done]);
     } catch (error) {
       dump.process.kill();
       throw error;
@@ -917,26 +947,27 @@ async function captureBackup(docker, options, key) {
     ]);
     files.process.stdin.end();
     try {
-      await Promise.all([
-        encryptStream(files.process.stdout, resolve(directory, names[1]), key, "storage"),
-        files.done,
-      ]);
+      await Promise.all([store.put(id, "storage.tar", files.process.stdout), files.done]);
     } catch (error) {
       files.process.kill();
       throw error;
     }
-    await encryptJson(stack.secrets, resolve(directory, names[2]), key, "secrets");
+    await store.putJson(id, "secrets.json", stack.secrets);
     const manifest = {
-      format,
+      format: resticFormat,
+      backupId: id,
       capturedAt: new Date().toISOString(),
       images: stack.images,
       fixture,
       snapshot,
-      artifacts: await Promise.all(
-        names.map(async (name) => ({ name, sha256: await hashFile(resolve(directory, name)) })),
-      ),
+      artifacts: ["database.dump", "storage.tar", "secrets.json"],
     };
-    await encryptJson(manifest, resolve(directory, "manifest.json.enc"), key, "manifest");
+    await store.putJson(id, "manifest.json", manifest);
+    await writeFile(
+      resolve(directory, "restic.json"),
+      JSON.stringify({ format: resticFormat, backupId: id }),
+      { flag: "wx", mode: 0o600 },
+    );
   } catch (error) {
     primaryError = error;
   } finally {
@@ -1004,7 +1035,12 @@ async function captureBackup(docker, options, key) {
     null,
     id,
   );
-  await encryptJson(verification, resolve(directory, "verification.json.enc"), key, "verification");
+  await store.putJson(id, "verification.json", verification);
+  await writeFile(
+    resolve(directory, "verified.json"),
+    JSON.stringify({ format: resticFormat, backupId: id, verifiedAt: verification.verifiedAt }),
+    { flag: "wx", mode: 0o600 },
+  );
   return verification;
 }
 
@@ -1015,6 +1051,7 @@ export async function main(args = process.argv.slice(2)) {
     options: {
       verify: { type: "boolean" },
       "init-key": { type: "boolean" },
+      "init-repository": { type: "boolean" },
       backup: { type: "string" },
       context: { type: "string" },
       compose: { type: "string" },
@@ -1025,14 +1062,14 @@ export async function main(args = process.argv.slice(2)) {
   });
   if (values.help) {
     console.info(
-      "backup-stack.mjs backup --verify [--init-key] [--compose compose.yaml] [--project astrama-local]\nbackup-stack.mjs restore --verify --backup .local-backups/backup-...\nUse BACKUP_ENCRYPTION_KEY or BACKUP_KEY_FILE; --init-key creates a private persistent local key once. Backups always verify a complete isolated restore.",
+      "backup-stack.mjs backup --verify [--init-key] [--init-repository] [--compose compose.yaml] [--project astrama-local]\nbackup-stack.mjs restore --verify --backup .local-backups/backup-...\nbackup-stack.mjs copy-offsite --verify --backup .local-backups/backup-...\nUse BACKUP_ENCRYPTION_KEY or BACKUP_KEY_FILE; --init-key creates a private persistent local key once. New captures use native Restic; --init-repository initializes its local repository. Backups always verify a complete isolated restore.",
     );
     return;
   }
   if (
     positionals.length !== 1 ||
-    !["backup", "restore"].includes(positionals[0]) ||
-    (positionals[0] === "restore" && (!values.verify || !values.backup))
+    !["backup", "restore", "copy-offsite"].includes(positionals[0]) ||
+    (["restore", "copy-offsite"].includes(positionals[0]) && (!values.verify || !values.backup))
   )
     throw new Error("Use backup --verify, or restore --verify --backup <directory>");
   await safeBackupPath(backupRoot);
@@ -1064,6 +1101,23 @@ export async function main(args = process.argv.slice(2)) {
   process.once("SIGINT", signal);
   process.once("SIGTERM", signal);
   try {
+    if (positionals[0] === "copy-offsite") {
+      const directory = await safeBackupPath(resolve(workspace, values.backup));
+      const pointer = await resticPointer(directory);
+      const store = await resticStore(docker, key, backupRoot, { child, run, secure });
+      const verified = await store.getJson(pointer.backupId, "verification.json");
+      if (!verified.verifiedAt)
+        throw new Error("Only restore-verified snapshots can be copied offsite");
+      await store.copyRemote(
+        pointer.backupId,
+        process.env.RESTIC_REMOTE_REPOSITORY,
+        Number(process.env.BACKUP_RETENTION_DAYS),
+      );
+      console.info(
+        "Restore-verified Restic snapshots copied, checked and explicit retention applied.",
+      );
+      return;
+    }
     const result =
       positionals[0] === "backup"
         ? await captureBackup(docker, values, key)

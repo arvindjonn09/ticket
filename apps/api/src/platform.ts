@@ -1,4 +1,5 @@
 import type { Database } from "./database.js";
+import { tenantBudgetConfigError } from "./tenant-budgets.js";
 
 const reservedSlugs = new Set([
   "www",
@@ -45,7 +46,7 @@ export function validTenantSlug(value: string, env: NodeJS.ProcessEnv = process.
   );
   const base = env.APP_BASE_DOMAIN?.toLowerCase().replace(/\.$/, "");
   if (base)
-    for (const origin of [env.PUBLIC_SITE_ORIGIN, env.OPERATOR_ORIGIN]) {
+    for (const origin of [env.PUBLIC_SITE_ORIGIN, env.OPERATOR_ORIGIN, env.STATUS_PAGE_ORIGIN]) {
       const host = originHost(origin),
         suffix = `.${base}`;
       if (host?.endsWith(suffix)) configuredReserved.add(host.slice(0, -suffix.length));
@@ -79,6 +80,8 @@ export function platformMode(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export function platformConfigError(env: NodeJS.ProcessEnv = process.env) {
+  const budgetError = tenantBudgetConfigError(env);
+  if (budgetError) return budgetError;
   if (env.PLATFORM_MODE && !["single", "hosted"].includes(env.PLATFORM_MODE))
     return "PLATFORM_MODE must be single or hosted";
   if (platformMode(env) === "single") {
@@ -97,6 +100,15 @@ export function platformConfigError(env: NodeJS.ProcessEnv = process.env) {
     return "PUBLIC_SITE_ORIGIN and OPERATOR_ORIGIN must be exact origins";
   if (originHost(env.PUBLIC_SITE_ORIGIN) === originHost(env.OPERATOR_ORIGIN))
     return "Public site and operator origins must use different hostnames";
+  if (
+    env.STATUS_PAGE_ORIGIN &&
+    (!originHost(env.STATUS_PAGE_ORIGIN) ||
+      [originHost(env.PUBLIC_SITE_ORIGIN), originHost(env.OPERATOR_ORIGIN)].includes(
+        originHost(env.STATUS_PAGE_ORIGIN),
+      ) ||
+      (env.NODE_ENV === "production" && !env.STATUS_PAGE_ORIGIN.startsWith("https://")))
+  )
+    return "STATUS_PAGE_ORIGIN must use a distinct exact HTTPS origin in production";
   if (
     ![env.PUBLIC_SITE_ORIGIN, env.OPERATOR_ORIGIN].every((value) => {
       try {
@@ -174,6 +186,12 @@ export async function tlsDomainAllowed(
   if (tlsChecks.size > 1000)
     for (const [ip, entry] of tlsChecks) if (now - entry.start >= 60_000) tlsChecks.delete(ip);
   const target = classifyHost(domain, env);
+  if (
+    platformMode(env) === "hosted" &&
+    env.STATUS_PAGE_ORIGIN &&
+    hostname(domain) === originHost(env.STATUS_PAGE_ORIGIN)
+  )
+    return true;
   if (target.kind === "public" || target.kind === "operator") return true;
   if (target.kind === "single") return hostname(domain) === originHost(env.APP_ORIGIN);
   if (target.kind !== "tenant") return false;

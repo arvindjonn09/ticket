@@ -34,15 +34,36 @@ test("production preflight rejects missing, shared and demonstration secrets", (
     validateProduction({
       ...env,
       PLATFORM_MODE: "hosted",
+      TENANT_REQUESTS_PER_MINUTE: "2",
+      TENANT_UPLOAD_BYTES_PER_DAY: "1024",
+      TENANT_INBOUND_PER_HOUR: "2",
+      TENANT_EXPORTS_PER_DAY: "2",
       APP_BASE_DOMAIN: "change-me.example",
       PUBLIC_SITE_ORIGIN: "https://change-me.example",
+      PUBLIC_SITE_HOST: "change-me.example",
       OPERATOR_ORIGIN: "https://ops.change-me.example",
+      OPERATOR_SITE_HOST: "ops.change-me.example",
       PAYMENT_PROVIDER: "stripe",
       STRIPE_SECRET_KEY: "sk_test_synthetic",
       STRIPE_WEBHOOK_SECRET: "whsec_synthetic",
       CAPTCHA_HMAC_SECRET: randomBytes(32).toString("hex"),
     }),
     [],
+  );
+  assert.ok(
+    validateProduction({
+      ...env,
+      PLATFORM_MODE: "hosted",
+      APP_BASE_DOMAIN: "change-me.example",
+      PUBLIC_SITE_ORIGIN: "https://change-me.example",
+      PUBLIC_SITE_HOST: "site.change-me.example",
+      OPERATOR_ORIGIN: "https://ops.change-me.example",
+      OPERATOR_SITE_HOST: "ops.change-me.example",
+      PAYMENT_PROVIDER: "stripe",
+      STRIPE_SECRET_KEY: "sk_test_synthetic",
+      STRIPE_WEBHOOK_SECRET: "whsec_synthetic",
+      CAPTCHA_HMAC_SECRET: randomBytes(32).toString("hex"),
+    }).some((value) => value.includes("PUBLIC_SITE_HOST must match PUBLIC_SITE_ORIGIN")),
   );
   assert.ok(
     validateProduction({ ...env, APP_DOMAIN: "Desk.Example.com" }).some((value) =>

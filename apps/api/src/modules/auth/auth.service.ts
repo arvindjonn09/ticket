@@ -21,6 +21,7 @@ import type { Actor } from "@astrama/domain";
 import { Database, lockConfigurationExclusive, type Tx } from "../../database.js";
 import { decryptSecret, encryptSecret, verifyTotp } from "../../mfa.js";
 import { expectedRequestOrigin, platformMode, resolveHost } from "../../platform.js";
+import { reserveTenantBudget } from "../../tenant-budgets.js";
 export type AuthContext = Actor & { sessionId: string; view: SessionView };
 export type AuthRequest = FastifyRequest & { auth: AuthContext };
 export const tokenHash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -51,6 +52,16 @@ const cookieName = "astrama_session";
 export class AuthService {
   private readonly dummy = hash(randomBytes(32), { type: argon2id });
   constructor(private readonly db: Database) {}
+  async admitRequest(request: AuthRequest) {
+    // Cross-origin browser reads must not consume another tenant's allowance.
+    if (request.headers.origin) this.checkOrigin(request);
+    if (["same-site", "cross-site"].includes(String(request.headers["sec-fetch-site"])))
+      throw new ForbiddenException("Use the organisation's own site");
+    if (!request.url.split("?")[0]!.startsWith("/api/auth/"))
+      await this.db.withTenant(request.auth.tenantId, (tx) =>
+        reserveTenantBudget(tx, request.auth.tenantId, "requests"),
+      );
+  }
   checkOrigin(request: FastifyRequest) {
     const expected = expectedRequestOrigin(request.headers.host);
     if (!expected || request.headers.origin !== expected)
@@ -403,6 +414,7 @@ export class SessionGuard implements CanActivate {
       )
         throw new ForbiddenException("Invalid CSRF token");
     }
+    await this.auth.admitRequest(request);
     return true;
   }
 }

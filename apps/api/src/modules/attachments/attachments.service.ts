@@ -28,6 +28,7 @@ import { canMessage, isGroupAgent, type Actor } from "@astrama/domain";
 import { AuthRequest, SessionGuard } from "../auth/auth.service.js";
 import { TicketsService } from "../tickets/tickets.service.js";
 import { readDataPolicy, checkAttachmentPolicy } from "../organisation/data-lifecycle.service.js";
+import { reserveTenantBudget } from "../../tenant-budgets.js";
 
 export const maxFileBytes = 5 * 1024 * 1024;
 const metadata = z.object({
@@ -158,9 +159,10 @@ export class AttachmentsService {
       .trim();
     if (!filename || filename === "." || filename === ".." || filename.length > 180)
       throw new BadRequestException("Use a filename between 1 and 180 characters");
-    await this.tickets.scoped(actor, async (tx) =>
-      checkAttachmentPolicy(await readDataPolicy(tx, actor.tenantId), filename, bytes.length),
-    );
+    await this.tickets.scoped(actor, async (tx) => {
+      checkAttachmentPolicy(await readDataPolicy(tx, actor.tenantId), filename, bytes.length);
+      await reserveTenantBudget(tx, actor.tenantId, "uploads", bytes.length);
+    });
     await scanFile(bytes);
     const storageKey = `${actor.tenantId}/${id}/${randomUUID()}`;
     await this.storage.send(

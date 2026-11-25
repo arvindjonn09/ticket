@@ -35,10 +35,22 @@ it("resolves only a single valid, non-reserved customer label under the configur
 it("recognizes only configured public and operator hosts", () => {
   expect(classifyHost("astrama.test", hosted)).toEqual({ kind: "public" });
   expect(classifyHost("ops.astrama.test", hosted)).toEqual({ kind: "operator" });
+  const status = { ...hosted, STATUS_PAGE_ORIGIN: "https://health.astrama.test" };
+  expect(validTenantSlug("health", status)).toBe(false);
+  expect(classifyHost("health.astrama.test", status)).toEqual({ kind: "unknown" });
+  expect(platformConfigError({ ...hosted, STATUS_PAGE_ORIGIN: hosted.OPERATOR_ORIGIN })).toContain(
+    "distinct",
+  );
   expect(classifyHost("fake-ops.astrama.test", hosted)).toEqual({
     kind: "tenant",
     slug: "fake-ops",
   });
+  expect(
+    validTenantSlug("control", { ...hosted, OPERATOR_ORIGIN: "https://control.astrama.test" }),
+  ).toBe(false);
+  expect(platformConfigError({ ...hosted, OPERATOR_ORIGIN: hosted.PUBLIC_SITE_ORIGIN })).toContain(
+    "different hostnames",
+  );
 });
 
 it("keeps the single-company origin and derives hosted links without choosing a production domain", () => {
@@ -54,6 +66,9 @@ it("keeps the single-company origin and derives hosted links without choosing a 
     "https://harbour.astrama.test",
   );
   expect(tenantOrigin("harbour", hosted)).toBe("https://harbour.astrama.test");
+  expect(
+    tenantOrigin("harbour", { ...hosted, PUBLIC_SITE_ORIGIN: "https://astrama.test:8443" }),
+  ).toBe("https://harbour.astrama.test:8443");
 });
 
 it("rejects missing hosted origins and never derives tenant origins from an untrusted host", () => {

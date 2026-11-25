@@ -373,6 +373,28 @@ describe.skipIf(!enabled)(
       });
       expect((await invoke("GET", path, operator)).statusCode).toBe(403);
     });
+    it("returns tenant request limits without blocking security routes or accepting cross-origin reads", async () => {
+      process.env.TENANT_REQUESTS_PER_MINUTE = "1";
+      try {
+        const foreign = await invoke("GET", "/tickets", admin, undefined, `${slug}.astrama.test`, {
+          origin: "https://another.astrama.test",
+        });
+        expect(foreign.statusCode).toBe(403);
+        expect(
+          (await invoke("GET", "/tickets", admin, undefined, `${slug}.astrama.test`)).statusCode,
+        ).toBe(200);
+        const limited = await invoke("GET", "/tickets", admin, undefined, `${slug}.astrama.test`);
+        expect(limited.statusCode, limited.body).toBe(429);
+        expect(Number(limited.headers["retry-after"])).toBeGreaterThan(0);
+        expect(
+          (await invoke("GET", "/auth/session", admin, undefined, `${slug}.astrama.test`))
+            .statusCode,
+        ).toBe(200);
+      } finally {
+        delete process.env.TENANT_REQUESTS_PER_MINUTE;
+        await owner.$executeRaw`DELETE FROM tenant_budgets WHERE tenant_id=${tenantId}::uuid`;
+      }
+    });
     it("expires idle sessions and fails closed for invalid or forged IP allowlists", async () => {
       const { operatorIpAllowed } = await import("../dist/operator-auth.js");
       expect(operatorIpAllowed("::1", { OPERATOR_IP_ALLOWLIST: "::1" })).toBe(true);

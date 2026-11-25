@@ -1,55 +1,32 @@
 import { execFileSync } from "node:child_process";
-import { lstat, readdir, realpath, rm, stat } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { lstat, readdir, readFile, realpath } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const workspace = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const workspace = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const backupRoot = join(workspace, ".local-backups");
-const remote = process.env.BACKUP_OFFSITE_REMOTE ?? "";
-const retentionDays = Number(process.env.BACKUP_RETENTION_DAYS);
+const remote = process.env.RESTIC_REMOTE_REPOSITORY ?? "";
+const days = Number(process.env.BACKUP_RETENTION_DAYS);
 if (
-  !/(^|\/)astrama\/backups$/.test(remote) ||
-  !Number.isInteger(retentionDays) ||
-  retentionDays < 7 ||
-  retentionDays > 3650
+  !/^s3:https?:\/\/[^/]+\/.+\/astrama\/backups$/.test(remote) ||
+  !Number.isInteger(days) ||
+  days < 7 ||
+  days > 3650
 ) {
   console.error(
-    "Configure BACKUP_OFFSITE_REMOTE ending in /astrama/backups and BACKUP_RETENTION_DAYS (7–3650).",
+    "Configure RESTIC_REMOTE_REPOSITORY with a dedicated S3-compatible /astrama/backups prefix and explicit BACKUP_RETENTION_DAYS (7-3650).",
   );
   process.exit(2);
 }
-
-function run(program, args, silent = false) {
-  execFileSync(program, args, { cwd: workspace, stdio: silent ? "ignore" : "inherit" });
+function run(args, silent = false) {
+  execFileSync(process.execPath, args, {
+    cwd: workspace,
+    stdio: silent ? "ignore" : "inherit",
+    windowsHide: true,
+  });
 }
-
-function safeSnapshot(name) {
-  return /^backup-[0-9TZ-]+-[0-9a-f-]{36}$/.test(name);
-}
-
-async function snapshots() {
-  const root = await realpath(backupRoot);
-  const entries = await readdir(root, { withFileTypes: true });
-  const verified = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || !safeSnapshot(entry.name)) continue;
-    const path = join(root, entry.name);
-    const info = await lstat(path);
-    if (!info.isDirectory() || info.isSymbolicLink()) continue;
-    const real = await realpath(path);
-    if (!real.startsWith(`${root}${sep}`)) continue;
-    try {
-      await stat(join(real, "verification.json.enc"));
-      verified.push({ name: entry.name, path: real, mtime: info.mtimeMs });
-    } catch {
-      // Incomplete encrypted captures are retained for operator investigation.
-    }
-  }
-  return { root, verified };
-}
-
 try {
-  run(process.execPath, [
+  run([
     "scripts/backup-stack.mjs",
     "backup",
     "--verify",
@@ -60,34 +37,36 @@ try {
     "--env-file",
     ".env.production",
   ]);
-  const { root, verified } = await snapshots();
-  if (!verified.length) throw new Error("No completed verified backup found");
-  const latest = verified.toSorted((a, b) => b.mtime - a.mtime)[0];
-  const destination = `${remote}/${latest.name}`;
-  run(
-    "rclone",
-    ["copy", latest.path, destination, "--immutable", "--checksum", "--transfers", "2"],
-    true,
-  );
-  run("rclone", ["check", latest.path, destination, "--one-way"], true);
-
-  const cutoff = Date.now() - retentionDays * 86400000;
-  for (const snapshot of verified) {
-    if (snapshot.mtime >= cutoff || snapshot.name === latest.name) continue;
-    const parent = await realpath(dirname(snapshot.path));
-    if (parent !== root || !safeSnapshot(snapshot.name))
-      throw new Error("Backup retention path validation failed");
-    await rm(snapshot.path, { recursive: true, force: false });
+  const root = await realpath(backupRoot),
+    verified = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^backup-[0-9TZ-]+-[a-f0-9]{32}$/.test(entry.name)) continue;
+    const directory = join(root, entry.name),
+      info = await lstat(directory);
+    if (info.isSymbolicLink() || !(await realpath(directory)).startsWith(root + sep))
+      throw new Error("Unsafe backup path");
+    try {
+      const marker = JSON.parse(await readFile(join(directory, "verified.json"), "utf8"));
+      if (
+        marker.format !== "astrama-restic-v2" ||
+        !entry.name.endsWith("-" + marker.backupId) ||
+        !Number.isFinite(Date.parse(marker.verifiedAt))
+      )
+        throw new Error("Invalid completion marker");
+      verified.push({ directory, at: Date.parse(marker.verifiedAt) });
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
   }
-  run("rclone", ["delete", remote, "--min-age", `${retentionDays}d`], true);
-  console.info("Verified encrypted backup copied offsite; retention applied.");
+  if (!verified.length) throw new Error("No restore-verified Restic backup found");
+  const latest = verified.toSorted((a, b) => b.at - a.at)[0];
+  run(["scripts/backup-stack.mjs", "copy-offsite", "--verify", "--backup", latest.directory]);
 } catch {
   console.error(
-    "Encrypted backup or offsite verification failed; attempting the configured operator alert.",
+    "Restic backup, restore verification or offsite copy/check failed; attempting the configured operator alert.",
   );
   try {
     run(
-      process.execPath,
       [
         "scripts/production-watch.mjs",
         process.env.APP_DOMAIN ?? "",
@@ -97,9 +76,7 @@ try {
       true,
     );
   } catch {
-    console.error(
-      "Operator alert attempt failed. Check the private service scheduler and monitoring logs.",
-    );
+    console.error("Operator alert attempt failed. Check private scheduler and monitoring logs.");
   }
   process.exitCode = 1;
 }

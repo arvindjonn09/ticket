@@ -90,6 +90,14 @@ class Errors implements ExceptionFilter {
         .send({ message: "Upload one file up to 5 MiB with its audience and ticket revision." });
     if (error instanceof HttpException) {
       const response = error.getResponse();
+      if (
+        error.getStatus() === 429 &&
+        typeof response === "object" &&
+        response &&
+        "retryAfterSeconds" in response &&
+        typeof response.retryAfterSeconds === "number"
+      )
+        reply.header("Retry-After", response.retryAfterSeconds);
       return reply
         .status(error.getStatus())
         .send(typeof response === "string" ? { message: response } : response);

@@ -1,63 +1,82 @@
 # Encrypted database, object and key recovery
 
-`scripts/backup-stack.mjs` backs up PostgreSQL, the entire private RustFS `/data` volume, and the application MFA encryption key plus storage credentials. It immediately restores them into a new isolated PostgreSQL/RustFS network and verifies the result. It never restores into the live database or object volume. Node 24 and the local Docker CLI are the only host dependencies; it uses the stack's existing immutable image IDs and installed API dependencies.
+New captures use native Restic0.19.1 in a pinned official backup container.
+The Node script orchestrates source quiescence, streams, custody and the same
+isolated PostgreSQL/RustFS restore drill; it no longer implements new backup
+encryption. Retained v1 AES-GCM snapshots remain readable through the same
+restore command. See [Restic operations](restic-backups.md) for repository,
+offsite and replacement-host instructions.
 
-Before capture, stop other tests, imports and direct database/object writers. The script validates the local Unix socket/Windows named-pipe Docker context, Compose service/workspace labels and named RustFS volume. It stops the API, web and worker that were running, creates a temporary verification fixture, stops RustFS, and streams `pg_dump -Fc` and a complete volume tar directly into authenticated AES-256-GCM encryption. It restores RustFS and the original running application services in `finally`, removes its source fixture, and verifies the retained encrypted snapshot independently. Capture briefly makes the application unavailable. An API/worker already stopped stays stopped.
+Before capture, stop other tests, imports and direct writers. Only the selected
+local Compose project is touched. The script validates service/workspace labels,
+PostgreSQL16, the private named RustFS volume and a local Docker endpoint. It
+stops previously running web/API/notification/lifecycle services, creates a
+private verification fixture, stops storage, and streams a custom-format database
+dump, complete object volume tar, application key and metadata to encrypted,
+deduplicated Restic snapshots. Source fixture cleanup and restoration of the
+originally running services occur in finally. Capture briefly takes the app
+offline. A service that was already stopped stays stopped.
 
-Set a separate `BACKUP_ENCRYPTION_KEY` to a private 64-character hexadecimal value, or point `BACKUP_KEY_FILE` to a private file containing it. This key must differ from `MFA_ENCRYPTION_KEY`. For a first local run only:
+Use a separate BACKUP_KEY_FILE or BACKUP_ENCRYPTION_KEY (64hex characters),
+different from the application MFA key. Preserve an independent off-host copy
+in a secret vault. Existing key-file owner/ACL/mode and no-link checks remain.
+No key is printed or written to .env. First capture, including safe repository
+initialisation (an existing key is never overwritten):
 
 ```sh
 node scripts/backup-stack.mjs backup --verify --init-key
 ```
 
-`--init-key` creates `.local-backups/private-backup-key` once with exclusive file creation and restricted current-user permissions; it never prints the key or changes `.env`. On Windows, the generated backup directory DACL is replaced with only the current owner, removing inherited and explicit grants to other principals. Existing key files must have a protected current-owner-only ACL and a parent that prevents deletion by others; on Unix they must be owned by the current user, mode 0600 or stricter, in a directory others cannot write. Store a second copy of the backup key in a separate off-host secret vault before relying on these backups. Keep the decryption key separate from the copied backup artifacts. Losing both copies makes the backup unrecoverable. The `.local-backups/` tree is ignored by Git; the script refuses write/cleanup paths outside it, including Windows junctions or symbolic links.
-
-Subsequent captures:
+If migrating an existing private key, --init-repository initialises Restic
+without requesting a new key. Subsequent captures omit both init flags.
+.local-backups/restic-repository contains encrypted Restic packs; generated
+backup-<timestamp>-<UUID> directories contain only non-secret UUID/completion
+pointers. Keep the repository and pointers together. Copying a pointer alone
+is not a backup. No plaintext dump, tar, customer data or key is staged.
 
 ```sh
 node scripts/backup-stack.mjs backup --verify
-```
-
-Each generated backup directory retains only encrypted files:
-
-| File                    | Contents                                                                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `database.dump.enc`     | PostgreSQL custom-format dump, including schema, policies, grants and rows                                                   |
-| `storage.tar.enc`       | Complete RustFS data volume, including object and bucket metadata                                                            |
-| `secrets.json.enc`      | Application MFA key and private storage credentials                                                                          |
-| `manifest.json.enc`     | Authenticated SHA-256 hashes of the three artifacts, source image IDs, table counts, object byte hashes and fixture identity |
-| `verification.json.enc` | Completion time and non-content verification totals, written only after successful full restore                              |
-
-Each artifact has a distinct authenticated identity, random 96-bit nonce and 128-bit GCM tag. No plaintext dump, archive, secret file or manifest is staged on the host. Failed captures may retain an incomplete encrypted directory; a missing authenticated manifest or verification file identifies an incomplete operation. There is no automatic retention deletion or external upload. Copy completed encrypted artifacts and archive the exact released API/PostgreSQL/RustFS images separately under your agreed offsite and retention policy. Verification uses captured immutable image IDs; a replacement host needs those images loaded first. Offsite credentials, image distribution, storage and customer retention periods are deployment inputs.
-
-To verify a retained backup again, select its directory:
-
-```sh
-node scripts/backup-stack.mjs restore --verify --backup .local-backups/backup-<timestamp>-<id>
-```
-
-The command authenticates the manifest and artifact hashes, decrypts streams into fresh uniquely named Docker volumes, creates the expected `astrama_app` and `astrama_auth_reader` roles before `pg_restore`, and starts isolated PostgreSQL and RustFS containers on an internal network without host ports. The restored API image checks every public-table row count, every S3 object's size and SHA-256 byte hash, unauthenticated denial for a private fixture object, and decryption of every retained MFA/invitation/recovery/recovery-request secret using the recovered application key. It also verifies that the restored runtime role has no RLS bypass and cannot read tickets without tenant context.
-
-A temporary `backup-verify-<UUID>` tenant, four known encrypted secret types (including the infrastructure recovery-request queue), and one random 4 KiB object under `_backup-verification/<UUID>.bin` ensure these recovery paths are exercised even when the installation has no customer attachments or pending invitations. The fixture is present only in the captured backup and is deleted from the live source before normal services resume. It is not an enabled login or delivery destination. The isolated verification network cannot send SMTP or access external services. Generated containers, volumes and network are removed only after checking their UUID name and ownership label, including on failure. Restoring for actual service recovery requires a separately provisioned maintenance destination, removal of this documented fixture, recovered keys and a controlled traffic cutover; this verification command deliberately exposes no live overwrite option.
-
-The `backup` operation writes a successful `operation_heartbeats` entry only after the isolated restore, all data/secret checks and generated-resource cleanup succeed. Nonzero exits indicate capture, verification, cleanup or heartbeat failure. Monitor both the exit status and a stale backup heartbeat; the operator monitor and administrator service-health page consider a success older than 26 hours stale. A retained-backup recheck does not update the live backup heartbeat. An exclusive `.local-backups/active-backup.lock` rejects overlapping captures. SIGINT/SIGTERM trigger cleanup and source-service restoration; forced process termination, host failure or Docker outage still require checking source services and UUID-labelled leftovers. After a hard crash, remove that single stale lock file only after confirming the original process has ended and source services are restored.
-
-Run the small authentication/path checks without stopping services:
-
-```sh
+node scripts/backup-stack.mjs restore --verify --backup .local-backups/backup-<timestamp>-<UUID>
 node --test scripts/backup-stack.test.mjs
+RUN_RESTIC_TESTS=true node --test scripts/backup-stack.test.mjs
 ```
 
-Windows scheduling is explicit and is not installed by ordinary application setup:
+The optional container check uses a disposable synthetic repository only and
+verifies round-trip bytes, wrong-password rejection and pack corruption.
+It never stops or reads the application's containers.
 
-```powershell
-.\scripts\schedule-backup.ps1                 # explains the opt-in, changes nothing
-.\scripts\schedule-backup.ps1 -Install -At 02:00
-```
+Every capture is fully restored into generated UUID-labelled private Docker
+volumes/network without host ports, SMTP, workers or an HTTP app. Verification
+checks every public-table row count, all private object hashes/sizes, rejection
+of anonymous private-object reads, all retained encrypted application secrets
+and the restricted runtime role's missing-context RLS denial. Secret checks
+include users, invitations, recovery links/requests, operators, public-mail
+URLs and inbound-mail configuration where those tables exist. Old v1 manifests
+without the newer tables remain compatible.
 
-The task uses the installing user's local time, runs while that Windows user is logged in, and needs Docker Desktop running. It ignores overlapping task instances. For unattended Linux hosts, use the deployment scheduler to run the same Node command and route failures to the operational alert wrapper. Never embed the backup key in a task command line; use its private file or scheduler-provided environment.
+Only successful complete restore and generated-resource cleanup can write the
+backup heartbeat and completion marker. Existing active-backup.lock ownership,
+signal handling and UUID/label cleanup guards remain. Forced process/host/daemon
+failure still needs operator inspection of source services, labelled containers
+and Restic locks. Never force-unlock while a real operation is running. No
+automatic local or offsite retention period is chosen; the offsite wrapper
+requires the explicit configured policy.
 
-Alternate Compose files inside this workspace are selected with `--compose <file> --project <name> --env-file <private-env-file>`, for example `--compose compose.production.yaml --project astrama-production --env-file .env.production`. Both development and minimal production API image layouts are supported. The same service names, explicit Astrama owner, PostgreSQL 16, local Docker daemon and private named RustFS `/data` volume are required. Select a local context with `--context <name>` rather than Docker environment overrides. Database/image upgrades require a fresh restore rehearsal before adopting a new backup format or release.
+Windows scheduling remains opt-in with scripts/schedule-backup.ps1 -Install.
+The Windows user must be logged in with Docker Desktop running. Production uses
+the existing systemd wrapper and explicit private backup environment. Scheduled
+offsite transport now uses native Restic copy/check/forget rather than rclone.
+Legacy backup directories and keys are not converted, deleted or rotated.
+
+## Local Restic verification - 19 November 2026
+
+Full capture and isolated restore passed at06:19:16UTC, verifying52public tables,
+private object bytes, application-secret decryption and restricted runtime RLS.
+The source installation returned healthy with2organisations/23tickets unchanged.
+Independent corrected restore passed at06:21:30UTC. All4native checks pass,
+including draining2MiB tar padding and rejecting corrupt/truncated content.
+See task-status.md for the captured backup group.
+This does not establish real offsite or replacement-host readiness.
 
 ## Local verification — 11 November 2026
 

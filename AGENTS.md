@@ -2,7 +2,7 @@
 
 ## Open review handoffs
 
-Before starting new work, read the open review handoffs in [docs/reviews/](docs/reviews/) (latest: [2026-11-12-claude-review.md](docs/reviews/2026-11-12-claude-review.md) and [2026-11-12-code-review.md](docs/reviews/2026-11-12-code-review.md)). Execute task packets in order (CX-01 first); run code-review packet CR-A before committing the in-progress SLA work, then CR-B to CR-F after the remaining CX packets. Items marked as owner decisions must wait for the user's answer; do not choose a default.
+Before starting new work, read the open review handoffs in [docs/reviews/](docs/reviews/) (latest: [2026-11-19-local-testing.md](docs/reviews/2026-11-19-local-testing.md); earlier: [2026-11-18-hosted-completion.md](docs/reviews/2026-11-18-hosted-completion.md), [2026-11-17-saas-review.md](docs/reviews/2026-11-17-saas-review.md) and [2026-11-12-code-review.md](docs/reviews/2026-11-12-code-review.md)). BL-01 to BL-04 and SA-04 to SA-06 are implemented locally; consult [docs/task-status.md](docs/task-status.md) for current verification and remaining release/deployment work. Local test instructions are in [docs/local-testing.md](docs/local-testing.md). Next work: [docs/specs/custom-domain-and-email.md](docs/specs/custom-domain-and-email.md). Do its Step 0 (commit and push the uncommitted work with CI green) before anything else. Items marked as owner decisions must wait for the user's answer; do not choose a default.
 
 ## Code changes
 

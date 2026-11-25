@@ -31,6 +31,7 @@ import {
   inboundMailSettingsSchema,
 } from "@astrama/contracts";
 import type { AuthContext } from "../auth/auth.service.js";
+import { reserveTenantBudget } from "../../tenant-budgets.js";
 import {
   isLoopMessage,
   notificationDeliveryId,
@@ -419,6 +420,9 @@ export class InboundMailService {
           );
       if (attachmentBytes > maxFileBytes)
         throw new BadRequestException("Email attachments exceed 5 MiB");
+      await reserveTenantBudget(tx, lookup.tenant_id, "inbound");
+      if (attachmentBytes)
+        await reserveTenantBudget(tx, lookup.tenant_id, "uploads", attachmentBytes);
       await tx.inboundMessage.create({
         data: {
           tenantId: lookup.tenant_id,

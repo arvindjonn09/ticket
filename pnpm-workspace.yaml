@@ -9,4 +9,5 @@ onlyBuiltDependencies:
   - prisma
 overrides:
   deepmerge-ts: ^8.0.0
+  effect: 3.22.1
   tinypool: 2.1.2

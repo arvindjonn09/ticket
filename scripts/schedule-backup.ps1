@@ -14,5 +14,5 @@ $trigger = New-ScheduledTaskTrigger -Daily -At ([datetime]::ParseExact($At, 'HH:
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $principal = New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -Hidden -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-Register-ScheduledTask -TaskName 'Astrama verified encrypted backup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Quiesce local Astrama, encrypt the DB/private objects/key and verify a full isolated restore. Requires this Windows user logged in and Docker Desktop running.' | Out-Null
+Register-ScheduledTask -TaskName 'Astrama verified encrypted backup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Quiesce local Astrama, capture DB/private objects/key with pinned Restic and verify a full isolated restore. Requires this Windows user logged in and Docker Desktop running.' | Out-Null
 Write-Output 'Installed the daily task for the current Windows user. It runs only while that user is logged in; wire task failures and stale backup heartbeat to your operational alerts.'

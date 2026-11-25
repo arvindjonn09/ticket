@@ -55,6 +55,8 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: node --test scripts/check-production.test.mjs scripts/backup-stack.test.mjs
+        env:
+          RUN_RESTIC_TESTS: "true"
       - name: Start the app and database
         run: docker compose up --build -d db setup api web site mail storage storage-setup scanner
       - name: Wait for the app
@@ -71,7 +73,7 @@ jobs:
       - name: Wait for the public site
         run: |
           for attempt in {1..30}; do
-            if curl --fail --silent http://localhost:4320/ > /dev/null; then
+            if curl --fail --silent http://localhost:4320/ > /dev/null && curl --fail --silent http://localhost:4320/api/health > /dev/null; then
               exit 0
             fi
             sleep 2
@@ -117,9 +119,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Verify hosted onboarding in Chromium, Firefox and WebKit
+      - name: Verify hosted onboarding and operator access in Chromium, Firefox and WebKit
         shell: pwsh
-        run: ./scripts/test-hosted-onboarding.ps1 
+        run: ./scripts/test-hosted-onboarding.ps1 -Journey all
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

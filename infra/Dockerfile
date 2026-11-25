@@ -20,11 +20,13 @@ USER node
 CMD ["pnpm", "--filter", "@astrama/api", "start"]
 
 FROM build AS site
+RUN chown -R node:node /app/apps/site/node_modules
 EXPOSE 4320
 USER node
 CMD ["pnpm", "--filter", "@astrama/site", "dev"]
 
 FROM build AS operator
+RUN chown -R node:node /app/apps/operator/node_modules
 EXPOSE 4321
 USER node
 CMD ["pnpm", "--filter", "@astrama/operator", "dev"]

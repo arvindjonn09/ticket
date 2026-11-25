@@ -1,0 +1,64 @@
+# Isolated local sandbox; no production providers, ports or customer data.
+name: astrama-hosted-local
+x-hosted-env: &hosted
+  NODE_ENV: development
+  PLATFORM_MODE: hosted
+  APP_BASE_DOMAIN: astrama.localhost
+  PUBLIC_SITE_ORIGIN: https://astrama.localhost:8443
+  OPERATOR_ORIGIN: https://ops.astrama.localhost:8443
+  PAYMENT_PROVIDER: test
+  TEST_PAYMENT_WEBHOOK_SECRET: local-hosted-payment-fixture-secret
+  CAPTCHA_HMAC_SECRET: local-hosted-captcha-fixture-secret-not-for-production
+  SMTP_HOST: mail
+  SMTP_PORT: 1025
+  SMTP_FROM: Astrama <service-desk@astrama.localhost>
+services:
+  db:
+    extends: { file: compose.yaml, service: db }
+    ports: !override []
+  setup:
+    extends: { file: compose.yaml, service: setup }
+    command:
+      [
+        "sh",
+        "-c",
+        "pnpm db:bootstrap && pnpm db:migrate && pnpm db:seed && node apps/api/dist/local-demo.js",
+      ]
+    environment:
+      <<: *hosted
+      DEMO_PASSWORD: Astrama-demo-2026!
+  api:
+    extends: { file: compose.yaml, service: api }
+    environment: *hosted
+  worker:
+    extends: { file: compose.yaml, service: worker }
+    environment: *hosted
+  lifecycle:
+    extends: { file: compose.yaml, service: lifecycle }
+    environment:
+      <<: *hosted
+      OPERATOR_EXPORT_DIRECTORY: /exports
+    volumes: ["operator-exports:/exports"]
+  web:
+    extends: { file: compose.yaml, service: web }
+    ports: !override ["127.0.0.1:8443:443"]
+    volumes:
+      - ./infra/Caddyfile.hosted-local:/etc/caddy/Caddyfile:ro
+      - hosted-caddy:/data
+  mail:
+    extends: { file: compose.yaml, service: mail }
+    ports: !override ["127.0.0.1:14312:8025"]
+  storage:
+    extends: { file: compose.yaml, service: storage }
+    ports: !override []
+  storage-setup:
+    extends: { file: compose.yaml, service: storage-setup }
+  scanner:
+    extends: { file: compose.yaml, service: scanner }
+    ports: !override []
+volumes:
+  astrama-db:
+  astrama-files:
+  astrama-scanner:
+  hosted-caddy:
+  operator-exports:

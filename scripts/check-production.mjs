@@ -22,9 +22,45 @@ export function validateProduction(env, allowLocal = false) {
     issues.push("PLATFORM_MODE must be single or hosted");
   if (env.PLATFORM_MODE === "hosted") {
     for (const key of [
+      "TENANT_REQUESTS_PER_MINUTE",
+      "TENANT_UPLOAD_BYTES_PER_DAY",
+      "TENANT_INBOUND_PER_HOUR",
+      "TENANT_EXPORTS_PER_DAY",
+    ])
+      if (!/^[1-9]\d*$/.test(env[key] ?? "") || !Number.isSafeInteger(Number(env[key])))
+        issues.push(`${key} must be an explicit positive safe integer`);
+    if (env.STATUS_PAGE_ORIGIN || env.STATUS_SITE_HOST) {
+      try {
+        const status = new URL(env.STATUS_PAGE_ORIGIN);
+        if (
+          status.origin !== env.STATUS_PAGE_ORIGIN ||
+          status.protocol !== "https:" ||
+          status.hostname !== env.STATUS_SITE_HOST ||
+          [env.PUBLIC_SITE_HOST, env.OPERATOR_SITE_HOST].includes(status.hostname)
+        )
+          issues.push("Status origin and host must match and use a distinct exact HTTPS origin");
+      } catch {
+        issues.push("Status origin and host must match and use a distinct exact HTTPS origin");
+      }
+    }
+    for (const key of ["PUBLIC_SITE_ORIGIN", "OPERATOR_ORIGIN"]) {
+      if (!env[key]) continue;
+      try {
+        const parsed = new URL(env[key]);
+        if (parsed.protocol !== "https:" || parsed.origin !== env[key])
+          issues.push(`${key} must be an exact HTTPS origin`);
+      } catch {
+        issues.push(`${key} must be an exact HTTPS origin`);
+      }
+    }
+    if (env.PUBLIC_SITE_HOST && env.PUBLIC_SITE_HOST === env.OPERATOR_SITE_HOST)
+      issues.push("Public site and operator hosts must differ");
+    for (const key of [
       "APP_BASE_DOMAIN",
       "PUBLIC_SITE_ORIGIN",
+      "PUBLIC_SITE_HOST",
       "OPERATOR_ORIGIN",
+      "OPERATOR_SITE_HOST",
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
       "CAPTCHA_HMAC_SECRET",
@@ -38,6 +74,22 @@ export function validateProduction(env, allowLocal = false) {
       issues.push("STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret");
     if (env.CAPTCHA_HMAC_SECRET && env.CAPTCHA_HMAC_SECRET.length < 32)
       issues.push("CAPTCHA_HMAC_SECRET must contain at least 32 characters");
+    if (env.PUBLIC_SITE_ORIGIN && env.PUBLIC_SITE_HOST) {
+      try {
+        if (new URL(env.PUBLIC_SITE_ORIGIN).hostname !== env.PUBLIC_SITE_HOST)
+          issues.push("PUBLIC_SITE_HOST must match PUBLIC_SITE_ORIGIN");
+      } catch {
+        // The origin validation reports malformed URLs separately.
+      }
+    }
+    if (env.OPERATOR_ORIGIN && env.OPERATOR_SITE_HOST) {
+      try {
+        if (new URL(env.OPERATOR_ORIGIN).hostname !== env.OPERATOR_SITE_HOST)
+          issues.push("OPERATOR_SITE_HOST must match OPERATOR_ORIGIN");
+      } catch {
+        issues.push("OPERATOR_ORIGIN must be an exact HTTPS origin");
+      }
+    }
   }
   if (
     !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(env.APP_DOMAIN ?? "") ||

@@ -79,6 +79,7 @@ describe.skipIf(!enabled)("audited operator actions and trusted jobs — real Po
   beforeAll(async () => {
     for (const [key, value] of Object.entries({
       NODE_ENV: "test",
+      PAYMENT_PROVIDER: "test",
       PLATFORM_MODE: "hosted",
       APP_BASE_DOMAIN: "astrama.test",
       PUBLIC_SITE_ORIGIN: "https://astrama.test",
@@ -412,6 +413,10 @@ describe.skipIf(!enabled)("audited operator actions and trusted jobs — real Po
     expect(denied.outputDirectory).toBeNull();
     expect(denied.status).toBe("queued");
     await owner.operatorJob.update({ where: { id: denied.id }, data: { status: "failed" } });
+    const alerts = await runtime.$queryRaw<
+      { tenant_slug: string; component: string; failures: bigint }[]
+    >`SELECT * FROM tenant_operational_alerts()`;
+    expect(alerts).toContainEqual({ tenant_slug: slug, component: "operator_jobs", failures: 1n });
     const recovered = await action(support, {
       action: "mfa-recovery",
       userId: adminId,

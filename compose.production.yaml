@@ -12,6 +12,11 @@ x-api-env: &runtime
   PUBLIC_SITE_ORIGIN: ${PUBLIC_SITE_ORIGIN:-https://astrama.test}
   OPERATOR_ORIGIN: ${OPERATOR_ORIGIN:-https://ops.astrama.test}
   OPERATOR_IP_ALLOWLIST: ${OPERATOR_IP_ALLOWLIST:-}
+  STATUS_PAGE_ORIGIN: ${STATUS_PAGE_ORIGIN:-}
+  TENANT_REQUESTS_PER_MINUTE: ${TENANT_REQUESTS_PER_MINUTE:-}
+  TENANT_UPLOAD_BYTES_PER_DAY: ${TENANT_UPLOAD_BYTES_PER_DAY:-}
+  TENANT_INBOUND_PER_HOUR: ${TENANT_INBOUND_PER_HOUR:-}
+  TENANT_EXPORTS_PER_DAY: ${TENANT_EXPORTS_PER_DAY:-}
   DEFAULT_TRIAL_SEAT_LIMIT: ${DEFAULT_TRIAL_SEAT_LIMIT:-25}
   PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-stripe}
   STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
@@ -123,6 +128,7 @@ services:
       PLATFORM_MODE: ${PLATFORM_MODE:-single}
       PUBLIC_SITE_HOST: ${PUBLIC_SITE_HOST:-astrama.test}
       OPERATOR_SITE_HOST: ${OPERATOR_SITE_HOST:-ops.astrama.test}
+      STATUS_SITE_HOST: ${STATUS_SITE_HOST:-status.invalid}
     entrypoint: ["sh", "-c"]
     command:
       - 'if [ "$$PLATFORM_MODE" = hosted ]; then exec caddy run --config /etc/caddy/Caddyfile.hosted --adapter caddyfile; else exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile; fi'
@@ -163,6 +169,16 @@ services:
       start_period: 120s
       retries: 20
     restart: unless-stopped
+  status:
+    image: louislam/uptime-kuma@sha256:7554dba313c84e44fee921ef3b5626ba1c711e412e82815e8c957517026112a9
+    user: "1000:1000"
+    profiles: [status]
+    logging: *default-logging
+    ports: ["127.0.0.1:3001:3001"]
+    volumes: ["status_data:/app/data"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
   monitor:
     image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-api:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
     logging: *default-logging
@@ -180,6 +196,7 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
 volumes:
+  status_data:
   operator_exports:
   database:
   files:

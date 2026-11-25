@@ -1,0 +1,36 @@
+{
+	auto_https disable_redirects
+}
+
+https://astrama.localhost, https://*.astrama.localhost {
+	tls internal
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+	}
+	handle /api/internal/tls-allowed {
+		respond 404
+	}
+	handle /api/* {
+		reverse_proxy api:4311
+	}
+	@operator host ops.astrama.localhost
+	handle @operator {
+		root * /operator
+		try_files {path} /index.html
+		file_server
+	}
+	@public host astrama.localhost
+	handle @public {
+		root * /public
+		try_files {path} /index.html
+		file_server
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -8,8 +8,20 @@ const db = new Database();
 try {
   await db.assertRuntimeRole();
   const status = await operationalHealth(db);
+  const tenantAlerts = await db.$queryRaw<
+    { tenant_slug: string; component: string; failures: bigint }[]
+  >`SELECT * FROM tenant_operational_alerts()`;
   console.info(JSON.stringify(status));
-  if (!status.healthy) {
+  for (const alert of tenantAlerts)
+    console.error(
+      JSON.stringify({
+        event: "tenant.operational.alert",
+        tenantSlug: alert.tenant_slug,
+        component: alert.component,
+        failures: Number(alert.failures),
+      }),
+    );
+  if (!status.healthy || tenantAlerts.length) {
     process.exitCode = 1;
     if (process.argv.includes("--notify")) {
       const recipient = z.email().parse(process.env.OPERATOR_ALERT_EMAIL);
@@ -38,7 +50,11 @@ try {
               .filter(([, ok]) => !ok)
               .map(([name]) => name)
               .join(", ") +
-            ". Check the private operator logs and deployment runbook.",
+            ".\n" +
+            tenantAlerts
+              .map((alert) => `[${alert.tenant_slug}] ${alert.component}: ${alert.failures}`)
+              .join("\n") +
+            "\nCheck the private operator logs and deployment runbook.",
         });
       } finally {
         mail.close();

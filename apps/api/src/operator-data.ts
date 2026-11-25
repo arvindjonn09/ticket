@@ -12,8 +12,9 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { retentionClasses } from "@astrama/contracts";
-import { lockConfigurationExclusive, type Tx } from "./database.js";
+import { lockBillingReconciliation, lockConfigurationExclusive, type Tx } from "./database.js";
 import { readDataPolicy } from "./modules/organisation/data-lifecycle.service.js";
+import { paymentProvider } from "./modules/billing/payment-provider.js";
 
 const requestSchema = z
   .object({
@@ -30,7 +31,7 @@ const requestSchema = z
   .strict();
 export type OperatorRequest = z.input<typeof requestSchema>;
 // Explicit customer business allowlist; security/session/invitation tables never enter an export.
-const exportTables = [
+export const exportTables = [
   "departments",
   "memberships",
   "categories",
@@ -47,6 +48,7 @@ const exportTables = [
   "tenant_data_policies",
   "automation_settings",
   "automation_actions",
+  "sla_settings",
 ] as const;
 const ticketTables = [
   "automation_actions",
@@ -119,16 +121,22 @@ export function operatorStorage() {
       : {}),
   });
 }
-async function owner(db: PrismaClient) {
+export async function assertDataOwner(db: PrismaClient) {
   const [role] = await db.$queryRaw<
     { allowed: boolean }[]
   >`SELECT pg_has_role(current_user,tableowner,'USAGE') AS allowed FROM pg_tables WHERE schemaname='public' AND tablename='tenants'`;
   if (!role?.allowed) throw new Error("Trusted migration-owner connection required");
 }
-async function scoped<T>(db: PrismaClient, tenantId: string, work: (tx: Tx) => Promise<T>) {
+async function scoped<T>(
+  db: PrismaClient,
+  tenantId: string,
+  work: (tx: Tx) => Promise<T>,
+  billing = false,
+) {
   return db.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id',${tenantId},true)`;
+      if (billing) await lockBillingReconciliation(tx, tenantId);
       // Read committed after this lock observes holds committed while waiting; S3 deletion cannot be rolled back.
       await lockConfigurationExclusive(tx, tenantId);
       return work(tx);
@@ -146,14 +154,33 @@ async function tenant(tx: Tx, input: z.output<typeof requestSchema>) {
     throw new Error("Tenant or expected slug mismatch");
   return found;
 }
-async function audit(
+/** Serializes deletion against BL-04 billing events, which also lock the tenant row. */
+async function lockTenantRow(tx: Tx, tenantId: string) {
+  await tx.$executeRaw`SELECT id FROM tenants WHERE id=${tenantId}::uuid FOR UPDATE`;
+}
+/** Idempotent, so a commit failure after a successful Stripe call retries safely. */
+async function cancelBillingSubscription(
+  subscriptionId: string,
+  guard?: { tenantId: string; customerId: string },
+) {
+  const provider = paymentProvider();
+  if (guard) await provider.cancel(subscriptionId, guard);
+  else await provider.cancel(subscriptionId);
+  return `cancelled billing subscription ${subscriptionId}`;
+}
+export async function dataOperationAudit(
   db: PrismaClient | Tx,
-  input: z.output<typeof requestSchema>,
-  operation: "export" | "delete" | "retention",
+  input: Pick<
+    z.output<typeof requestSchema>,
+    "tenantId" | "expectedSlug" | "operator" | "reason" | "evidence"
+  >,
+  operation: "export" | "delete" | "retention" | "restore",
   outcome: string,
   count = 0,
+  detail = "",
 ) {
-  await db.$executeRaw`INSERT INTO data_operation_audits(id,tenant_id,tenant_slug,operation,operator_name,reason,evidence,outcome,record_count) VALUES(${randomUUID()}::uuid,${input.tenantId}::uuid,${input.expectedSlug},${operation},${input.operator},${input.reason},${input.evidence},${outcome},${count})`;
+  const evidence = `${input.evidence}${detail ? `; ${detail}` : ""}`;
+  await db.$executeRaw`INSERT INTO data_operation_audits(id,tenant_id,tenant_slug,operation,operator_name,reason,evidence,outcome,record_count) VALUES(${randomUUID()}::uuid,${input.tenantId}::uuid,${input.expectedSlug},${operation},${input.operator},${input.reason},${evidence},${outcome},${count})`;
 }
 async function privateDirectory(path: string) {
   await mkdir(path, { mode: 0o700 }); // Exclusive creation also refuses existing paths/symlinks.
@@ -171,15 +198,20 @@ export async function exportTenant(
   body: OperatorRequest,
   output: string,
   storage = operatorStorage(),
+  authorize?: (tx: Tx) => Promise<void>,
 ) {
   const input = requestSchema.parse(body);
-  await owner(db);
-  await scoped(db, input.tenantId, (tx) => tenant(tx, input));
+  await assertDataOwner(db);
+  await scoped(db, input.tenantId, async (tx) => {
+    if (authorize) await authorize(tx);
+    return tenant(tx, input);
+  });
   const path = resolve(output);
   await privateDirectory(path);
-  await audit(db, input, "export", "requested");
+  await dataOperationAudit(db, input, "export", "requested");
   try {
     const manifest = await scoped(db, input.tenantId, async (tx) => {
+      if (authorize) await authorize(tx);
       const organisation = await tenant(tx, input),
         records: Record<string, unknown> = { organisation };
       // Deliberate field allowlist, including no hashes, MFA state, login counters or invitation material.
@@ -261,10 +293,10 @@ export async function exportTenant(
       flag: "wx",
       mode: 0o600,
     });
-    await audit(db, input, "export", "completed", manifest.files.length);
+    await dataOperationAudit(db, input, "export", "completed", manifest.files.length);
     return { output: path, files: manifest.files.length };
   } catch (error) {
-    await audit(db, input, "export", "failed");
+    await dataOperationAudit(db, input, "export", "failed");
     throw error;
   }
 }
@@ -298,7 +330,7 @@ export async function deleteTenant(
   storage = operatorStorage(),
 ) {
   const input = requestSchema.parse(body);
-  await owner(db);
+  await assertDataOwner(db);
   const preview = await scoped(db, input.tenantId, async (tx) => {
     const organisation = await tenant(tx, input);
     if (input.lifecycle && !lifecycleDeletionDue(organisation, input.lifecycleNow ?? new Date()))
@@ -316,27 +348,51 @@ export async function deleteTenant(
   if (!input.execute) return preview;
   if (!input.offline && !input.lifecycle)
     throw new Error("Stop API ingress and workers, then assert --offline for tenant deletion");
-  await scoped(db, input.tenantId, async (tx) => {
-    const organisation = await tenant(tx, input);
-    if (input.lifecycle && !lifecycleDeletionDue(organisation, input.lifecycleNow ?? new Date()))
-      throw new LifecycleDeletionNotDue();
-    const policy = await readDataPolicy(tx, input.tenantId);
-    if (policy.legalHold || retentionClasses.some((kind) => policy.retention[kind].legalHold))
-      throw new Error("Legal hold blocks tenant deletion");
-    const keys = (
-      await tx.attachment.findMany({
-        where: { tenantId: input.tenantId },
-        select: { storageKey: true },
-      })
-    ).map((row) => row.storageKey);
-    await tx.tenant.update({
-      where: { id: input.tenantId },
-      data: { active: false, ...(input.lifecycle ? { status: "deleted" } : {}) },
-    });
-    await tx.session.deleteMany({ where: { tenantId: input.tenantId } });
-    await tx.$executeRaw`INSERT INTO tenant_deletion_jobs(tenant_id,tenant_slug,object_keys) VALUES(${input.tenantId}::uuid,${input.expectedSlug},${JSON.stringify(keys)}::jsonb) ON CONFLICT(tenant_id) DO NOTHING`;
-    await audit(tx, input, "delete", "requested", preview.tickets);
-  });
+  try {
+    await scoped(
+      db,
+      input.tenantId,
+      async (tx) => {
+        await lockTenantRow(tx, input.tenantId);
+        const organisation = await tenant(tx, input);
+        if (
+          input.lifecycle &&
+          !lifecycleDeletionDue(organisation, input.lifecycleNow ?? new Date())
+        )
+          throw new LifecycleDeletionNotDue();
+        const policy = await readDataPolicy(tx, input.tenantId);
+        if (policy.legalHold || retentionClasses.some((kind) => policy.retention[kind].legalHold))
+          throw new Error("Legal hold blocks tenant deletion");
+        const keys = (
+          await tx.attachment.findMany({
+            where: { tenantId: input.tenantId },
+            select: { storageKey: true },
+          })
+        ).map((row) => row.storageKey);
+        const detail = organisation.stripeSubscriptionId
+          ? await cancelBillingSubscription(
+              organisation.stripeSubscriptionId,
+              input.lifecycle
+                ? { tenantId: organisation.id, customerId: organisation.stripeCustomerId ?? "" }
+                : undefined,
+            )
+          : "";
+        await tx.tenant.update({
+          where: { id: input.tenantId },
+          data: { active: false, ...(input.lifecycle ? { status: "deleted" } : {}) },
+        });
+        await tx.session.deleteMany({ where: { tenantId: input.tenantId } });
+        await tx.$executeRaw`INSERT INTO tenant_deletion_jobs(tenant_id,tenant_slug,object_keys) VALUES(${input.tenantId}::uuid,${input.expectedSlug},${JSON.stringify(keys)}::jsonb) ON CONFLICT(tenant_id) DO NOTHING`;
+        await dataOperationAudit(tx, input, "delete", "requested", preview.tickets, detail);
+      },
+      true,
+    );
+  } catch (error) {
+    // Routine not-due polling must not flood the audit ledger; only real failures demand retry.
+    if (!(error instanceof LifecycleDeletionNotDue))
+      await dataOperationAudit(db, input, "delete", "failed_retry_required", preview.tickets);
+    throw error;
+  }
   try {
     const [job] = await db.$queryRaw<
       { object_keys: string[] }[]
@@ -347,6 +403,7 @@ export async function deleteTenant(
       ...(await prefixKeys(storage, input.tenantId)),
     ]);
     await scoped(db, input.tenantId, async (tx) => {
+      await lockTenantRow(tx, input.tenantId);
       const organisation = await tenant(tx, input);
       if (input.lifecycle && organisation.status !== "deleted") throw new LifecycleDeletionNotDue();
       const policy = await readDataPolicy(tx, input.tenantId);
@@ -368,17 +425,26 @@ export async function deleteTenant(
         );
       await tx.tenant.delete({ where: { id: input.tenantId } });
       await tx.$executeRaw`DELETE FROM tenant_deletion_jobs WHERE tenant_id=${input.tenantId}::uuid`;
-      await audit(tx, input, "delete", "completed", preview.tickets);
+      await dataOperationAudit(
+        tx,
+        input,
+        "delete",
+        "completed",
+        preview.tickets,
+        organisation.stripeSubscriptionId
+          ? `cancelled billing subscription ${organisation.stripeSubscriptionId}`
+          : "",
+      );
     });
     return { ...preview, deleted: true };
   } catch (error) {
-    await audit(db, input, "delete", "failed_retry_required", preview.tickets);
+    await dataOperationAudit(db, input, "delete", "failed_retry_required", preview.tickets);
     throw error;
   }
 }
 
 export async function deleteExpiredTenant(db: PrismaClient, tenantId: string, now = new Date()) {
-  await owner(db);
+  await assertDataOwner(db);
   const organisation = await db.tenant.findUnique({ where: { id: tenantId } });
   if (!organisation || !lifecycleDeletionDue(organisation, now)) return false;
   try {
@@ -406,8 +472,8 @@ export async function retainTenant(
   storage = operatorStorage(),
 ) {
   const input = requestSchema.parse(body);
-  await owner(db);
-  if (input.execute) await audit(db, input, "retention", "requested");
+  await assertDataOwner(db);
+  if (input.execute) await dataOperationAudit(db, input, "retention", "requested");
   try {
     return await scoped(db, input.tenantId, async (tx) => {
       const organisation = await tenant(tx, input);
@@ -417,7 +483,7 @@ export async function retainTenant(
       if (policy.legalHold || rules.some((rule) => rule.legalHold))
         throw new Error("Legal hold blocks retention");
       if (rules.some((rule) => rule.days === null)) {
-        if (input.execute) await audit(tx, input, "retention", "disabled", 0);
+        if (input.execute) await dataOperationAudit(tx, input, "retention", "disabled", 0);
         return { execute: input.execute, enabled: false, ticketIds: [] };
       }
       const cutoff = new Date(Date.now() - Math.max(...rules.map((rule) => rule.days!)) * 86400000);
@@ -445,7 +511,7 @@ export async function retainTenant(
       });
       const ids = rows.map((row) => row.id);
       if (!input.execute || !ids.length) {
-        if (input.execute) await audit(tx, input, "retention", "completed", 0);
+        if (input.execute) await dataOperationAudit(tx, input, "retention", "completed", 0);
         return {
           execute: input.execute,
           enabled: true,
@@ -471,11 +537,11 @@ export async function retainTenant(
           ids,
         );
       await tx.ticket.deleteMany({ where: { tenantId: input.tenantId, id: { in: ids } } });
-      await audit(tx, input, "retention", "completed", ids.length);
+      await dataOperationAudit(tx, input, "retention", "completed", ids.length);
       return { execute: true, enabled: true, cutoff: cutoff.toISOString(), ticketIds: ids };
     });
   } catch (error) {
-    if (input.execute) await audit(db, input, "retention", "failed_retry_required");
+    if (input.execute) await dataOperationAudit(db, input, "retention", "failed_retry_required");
     throw error;
   }
 }

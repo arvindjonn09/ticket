@@ -1,6 +1,10 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 export type Tx = Prisma.TransactionClient;
+export async function lockBillingReconciliation(tx: Tx, tenantId: string) {
+  // Lock before reading live provider state and before taking configuration/tenant row locks.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`billing:${tenantId}`},0))`;
+}
 export async function lockConfiguration(tx: Tx, tenantId: string) {
   // Ticket operations share a tenant lock; configuration changes take the exclusive counterpart.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`configuration:${tenantId}`}, 0))`;

@@ -21,9 +21,9 @@ import { createChallenge, verifySolution } from "altcha-lib/v1";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import { SessionGuard, type AuthRequest } from "../auth/auth.service.js";
-import { Database } from "../../database.js";
+import { Database, lockBillingReconciliation } from "../../database.js";
 import { encryptSecret, decryptSecret } from "../../mfa.js";
-import { paymentProvider, type BillingEvent } from "./payment-provider.js";
+import { paymentProvider } from "./payment-provider.js";
 import { platformMode, tenantOrigin, validTenantSlug } from "../../platform.js";
 
 const signupSchema = z
@@ -488,16 +488,26 @@ If you did not request this email, you can ignore it.`,
 
   async applyWebhook(rawBody: Buffer | undefined, signature: string) {
     if (!rawBody?.length || !signature) throw new BadRequestException("Invalid billing webhook.");
-    let event: BillingEvent;
+    const provider = paymentProvider();
+    let tenantId: string;
     try {
-      event = await paymentProvider().webhook(rawBody, signature);
+      tenantId = z.string().uuid().parse(provider.verifyWebhook(rawBody, signature));
     } catch {
       throw new BadRequestException("Invalid billing webhook signature.");
     }
-    const [result] = await this.db.$queryRaw<{ applied: boolean }[]>`
+    return this.db.$transaction(
+      async (tx) => {
+        await lockBillingReconciliation(tx, tenantId);
+        const event = await provider.webhook(rawBody, signature);
+        if (event.tenantId !== tenantId)
+          throw new BadRequestException("Billing event tenant changed.");
+        const [result] = await tx.$queryRaw<{ applied: boolean }[]>`
       SELECT public.apply_billing_event(${event.id},${event.type},${event.tenantId}::uuid,${event.planId},
         ${event.customerId},${event.subscriptionId},${event.transition}) AS applied`;
-    return { received: true, duplicate: result?.applied === false };
+        return { received: true, duplicate: result?.applied === false };
+      },
+      { maxWait: 30000, timeout: 60000 },
+    );
   }
 
   private requireAdmin(req: AuthRequest) {

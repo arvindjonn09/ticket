@@ -167,19 +167,22 @@ test("light/dark views are accessible and the mobile form fits the viewport", as
   await login(page, "employee");
   await page.getByRole("button", { name: "Light", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  // Paint the theme before auditing: WebKit can retain stale inherited colours until capture.
+  await page.screenshot({ path: "test-results/astrama-light.png", fullPage: true });
+  await expect(page.locator(".ticket-panel")).toHaveCSS("background-color", "rgb(255, 255, 255)");
   expect(
     (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze())
       .violations,
   ).toEqual([]);
-  await page.screenshot({ path: "test-results/astrama-light.png", fullPage: true });
   await page.getByRole("button", { name: "Dark", exact: true }).click();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.screenshot({ path: "test-results/astrama-dark.png", fullPage: true });
+  await expect(page.locator(".ticket-panel")).toHaveCSS("background-color", "rgb(27, 31, 40)");
   expect(
     (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze())
       .violations,
   ).toEqual([]);
-  await page.screenshot({ path: "test-results/astrama-dark.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("link", { name: "Report an issue", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Tell us what’s happening" })).toBeVisible();

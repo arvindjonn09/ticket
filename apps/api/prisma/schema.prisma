@@ -46,6 +46,8 @@ model Tenant {
   lifecycleNotices        TenantLifecycleNotice[]
   billingPlan             BillingPlan?             @relation(fields: [planId], references: [id])
   operatorSupportGrants   OperatorSupportGrant[]
+  outgoingMail            TenantOutgoingMail?
+  mailOAuthConnections    MailOAuthConnection[]
 
   @@map("tenants")
 }
@@ -64,6 +66,58 @@ model BillingPlan {
   tenants         Tenant[]
 
   @@map("billing_plans")
+}
+
+model TenantOutgoingMail {
+  tenantId            String    @id @map("tenant_id") @db.Uuid
+  revision            Int       @default(0)
+  mode                String    @default("platform")
+  status              String    @default("working")
+  provider            String?
+  host                String?
+  port                Int?
+  security            String?
+  username            String?
+  fromAddress         String?   @map("from_address")
+  encryptedSecret     String?   @map("encrypted_secret")
+  accountId           String?   @map("account_id")
+  configuredById      String?   @map("configured_by_id") @db.Uuid
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  lastErrorCode       String?   @map("last_error_code")
+  testedAt            DateTime? @map("tested_at") @db.Timestamptz(6)
+  noticePendingAt     DateTime? @map("notice_pending_at") @db.Timestamptz(6)
+  noticeSentAt        DateTime? @map("notice_sent_at") @db.Timestamptz(6)
+  noticeAttempts      Int       @default(0) @map("notice_attempts")
+  noticeNextAttemptAt DateTime  @default(now()) @map("notice_next_attempt_at") @db.Timestamptz(6)
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  configuredBy        User?     @relation(fields: [tenantId, configuredById], references: [tenantId, id])
+
+  @@map("tenant_outgoing_mail")
+}
+
+model MailOAuthConnection {
+  id             String    @id @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  adminId        String    @map("admin_id") @db.Uuid
+  sessionId      String    @map("session_id") @db.Uuid
+  revision       Int
+  mailboxAddress String    @map("mailbox_address")
+  fromAddress    String    @map("from_address")
+  stateHash      String    @unique @map("state_hash")
+  encryptedPkce  String?   @map("encrypted_pkce")
+  encryptedCache String?   @map("encrypted_cache")
+  accountId      String?   @map("account_id")
+  status         String    @default("pending")
+  errorCode      String?   @map("error_code")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt     DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  admin          User      @relation(fields: [tenantId, adminId], references: [tenantId, id], onDelete: Cascade)
+  session        Session   @relation(fields: [tenantId, sessionId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, adminId, createdAt])
+  @@map("mail_oauth_connections")
 }
 
 model SignupRequest {
@@ -131,6 +185,8 @@ model TenantLifecycleNotice {
 }
 
 model User {
+  configuredOutgoingMail TenantOutgoingMail[]
+  mailOAuthConnections   MailOAuthConnection[]
   id                     String                  @id @default(uuid()) @db.Uuid
   tenantId               String                  @map("tenant_id") @db.Uuid
   name                   String
@@ -358,19 +414,19 @@ model SlaAlert {
 }
 
 model InboundMailSettings {
-  tenantId               String     @id @map("tenant_id") @db.Uuid
-  revision               Int        @default(0)
-  triageDepartmentId     String     @map("triage_department_id") @db.Uuid
-  triageCategoryId       String     @map("triage_category_id") @db.Uuid
-  encryptedWebhookSecret String?    @map("encrypted_webhook_secret")
-  allowUnverifiedSenders Boolean    @default(false) @map("allow_unverified_senders")
-  lastReceivedAt DateTime? @map("last_received_at") @db.Timestamptz(6)
-  forwardingProbeHash String? @map("forwarding_probe_hash")
-  forwardingProbeStartedAt DateTime? @map("forwarding_probe_started_at") @db.Timestamptz(6)
-  forwardingVerifiedAt DateTime? @map("forwarding_verified_at") @db.Timestamptz(6)
-  tenant                 Tenant     @relation(fields: [tenantId], references: [id])
-  triageDepartment       Department @relation("triageDepartment", fields: [tenantId, triageDepartmentId], references: [tenantId, id])
-  triageCategory         Category   @relation("triageCategory", fields: [tenantId, triageCategoryId], references: [tenantId, id])
+  tenantId                 String     @id @map("tenant_id") @db.Uuid
+  revision                 Int        @default(0)
+  triageDepartmentId       String     @map("triage_department_id") @db.Uuid
+  triageCategoryId         String     @map("triage_category_id") @db.Uuid
+  encryptedWebhookSecret   String?    @map("encrypted_webhook_secret")
+  allowUnverifiedSenders   Boolean    @default(false) @map("allow_unverified_senders")
+  lastReceivedAt           DateTime?  @map("last_received_at") @db.Timestamptz(6)
+  forwardingProbeHash      String?    @map("forwarding_probe_hash")
+  forwardingProbeStartedAt DateTime?  @map("forwarding_probe_started_at") @db.Timestamptz(6)
+  forwardingVerifiedAt     DateTime?  @map("forwarding_verified_at") @db.Timestamptz(6)
+  tenant                   Tenant     @relation(fields: [tenantId], references: [id])
+  triageDepartment         Department @relation("triageDepartment", fields: [tenantId, triageDepartmentId], references: [tenantId, id])
+  triageCategory           Category   @relation("triageCategory", fields: [tenantId, triageCategoryId], references: [tenantId, id])
 
   @@map("inbound_mail_settings")
 }
@@ -393,29 +449,31 @@ model InboundMailAddress {
 }
 
 model PlatformMailProfile {
-  id                String @id @db.Uuid
-  revision          Int @unique @default(autoincrement())
+  id                String                 @id @db.Uuid
+  revision          Int                    @unique @default(autoincrement())
   settings          Json
-  encryptedPassword String @map("encrypted_password")
-  testedAt          DateTime? @map("tested_at") @db.Timestamptz(6)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  encryptedPassword String                 @map("encrypted_password")
+  testedAt          DateTime?              @map("tested_at") @db.Timestamptz(6)
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   activeSettings    PlatformMailSettings[] @relation("ActivePlatformMail")
   previousSettings  PlatformMailSettings[] @relation("PreviousPlatformMail")
+
   @@map("platform_mail_profiles")
 }
 
 model PlatformMailSettings {
-  id                Boolean @id @default(true)
-  revision          Int @default(0)
-  activeProfileId   String? @map("active_profile_id") @db.Uuid
-  previousProfileId String? @map("previous_profile_id") @db.Uuid
-  probeHash         String? @map("probe_hash")
-  probeAddress      String? @map("probe_address")
-  probeStartedAt    DateTime? @map("probe_started_at") @db.Timestamptz(6)
-  probeReceivedAt   DateTime? @map("probe_received_at") @db.Timestamptz(6)
-  intakeRejected    BigInt @default(0) @map("intake_rejected")
-  activeProfile     PlatformMailProfile? @relation("ActivePlatformMail",fields:[activeProfileId],references:[id])
-  previousProfile   PlatformMailProfile? @relation("PreviousPlatformMail",fields:[previousProfileId],references:[id])
+  id                Boolean              @id @default(true)
+  revision          Int                  @default(0)
+  activeProfileId   String?              @map("active_profile_id") @db.Uuid
+  previousProfileId String?              @map("previous_profile_id") @db.Uuid
+  probeHash         String?              @map("probe_hash")
+  probeAddress      String?              @map("probe_address")
+  probeStartedAt    DateTime?            @map("probe_started_at") @db.Timestamptz(6)
+  probeReceivedAt   DateTime?            @map("probe_received_at") @db.Timestamptz(6)
+  intakeRejected    BigInt               @default(0) @map("intake_rejected")
+  activeProfile     PlatformMailProfile? @relation("ActivePlatformMail", fields: [activeProfileId], references: [id])
+  previousProfile   PlatformMailProfile? @relation("PreviousPlatformMail", fields: [previousProfileId], references: [id])
+
   @@map("platform_mail_settings")
 }
 
@@ -523,17 +581,19 @@ model Idempotency {
 }
 
 model Session {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  tokenHash   String   @unique @map("token_hash")
-  csrfToken   String   @map("csrf_token")
-  mfaVerified Boolean  @default(false) @map("mfa_verified")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
-  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
-  user        User     @relation(fields: [tenantId, userId], references: [tenantId, id])
+  mailOAuthConnections MailOAuthConnection[]
+  id                   String                @id @default(uuid()) @db.Uuid
+  tenantId             String                @map("tenant_id") @db.Uuid
+  userId               String                @map("user_id") @db.Uuid
+  tokenHash            String                @unique @map("token_hash")
+  csrfToken            String                @map("csrf_token")
+  mfaVerified          Boolean               @default(false) @map("mfa_verified")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt            DateTime              @map("expires_at") @db.Timestamptz(6)
+  lastSeenAt           DateTime              @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  user                 User                  @relation(fields: [tenantId, userId], references: [tenantId, id])
 
+  @@unique([tenantId, id])
   @@map("sessions")
 }
 
@@ -699,20 +759,20 @@ model InvitationMail {
 }
 
 model Operator {
-  id                  String                @id @default(uuid()) @db.Uuid
+  id                  String                 @id @default(uuid()) @db.Uuid
   name                String
-  email               String                @unique
-  passwordHash        String                @map("password_hash")
+  email               String                 @unique
+  passwordHash        String                 @map("password_hash")
   role                String
-  active              Boolean               @default(true)
-  encryptedMfaSecret  String?               @map("encrypted_mfa_secret")
-  mfaEnrolled         Boolean               @default(false) @map("mfa_enrolled")
-  mfaLastStep         Int                   @default(-1) @map("mfa_last_step")
-  mfaFailures         Int                   @default(0) @map("mfa_failures")
-  mfaLockedUntil      DateTime?             @map("mfa_locked_until") @db.Timestamptz(6)
-  mfaPendingSessionId String?               @map("mfa_pending_session_id") @db.Uuid
-  mfaPendingExpiresAt DateTime?             @map("mfa_pending_expires_at") @db.Timestamptz(6)
-  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  active              Boolean                @default(true)
+  encryptedMfaSecret  String?                @map("encrypted_mfa_secret")
+  mfaEnrolled         Boolean                @default(false) @map("mfa_enrolled")
+  mfaLastStep         Int                    @default(-1) @map("mfa_last_step")
+  mfaFailures         Int                    @default(0) @map("mfa_failures")
+  mfaLockedUntil      DateTime?              @map("mfa_locked_until") @db.Timestamptz(6)
+  mfaPendingSessionId String?                @map("mfa_pending_session_id") @db.Uuid
+  mfaPendingExpiresAt DateTime?              @map("mfa_pending_expires_at") @db.Timestamptz(6)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   sessions            OperatorSession[]
   audits              OperatorAudit[]
   supportGrants       OperatorSupportGrant[]

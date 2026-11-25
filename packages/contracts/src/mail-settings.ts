@@ -1,5 +1,70 @@
 import { z } from "zod";
 
+const outgoingRevision = z.number().int().nonnegative();
+export const outgoingSmtpSchema = z
+  .object({
+    revision: outgoingRevision,
+    provider: z.enum(["smtp", "google"]),
+    host: z
+      .string()
+      .trim()
+      .min(1)
+      .max(253)
+      .refine((value) => !/[\s/@\\?#\0]/.test(value), "Enter an SMTP hostname"),
+    port: z.union([z.literal(465), z.literal(587), z.literal(25), z.literal(2525)]),
+    security: z.enum(["tls", "starttls"]),
+    username: z
+      .string()
+      .trim()
+      .min(1)
+      .max(254)
+      .refine((value) => !/[\r\n\0]/.test(value)),
+    password: z.string().min(1).max(2000),
+    fromAddress: z.string().trim().email().max(254),
+  })
+  .strict();
+export const outgoingPlatformSchema = z.object({ revision: outgoingRevision }).strict();
+export const microsoft365ConnectSchema = outgoingPlatformSchema.extend({
+  mailboxAddress: z.string().trim().email().max(254),
+  fromAddress: z.string().trim().email().max(254),
+});
+export const microsoft365ActivateSchema = outgoingPlatformSchema.extend({
+  connectionId: z.string().uuid(),
+});
+export const microsoft365CompleteSchema = z
+  .object({ handoff: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
+  .strict();
+export const operatorOutgoingResetSchema = outgoingPlatformSchema.extend({
+  reason: z.string().trim().min(10).max(1000),
+});
+export type OutgoingSmtpInput = z.infer<typeof outgoingSmtpSchema>;
+export type OutgoingMailMode = "platform" | "smtp" | "microsoft365";
+export type OutgoingMailSummary = {
+  revision: number;
+  mode: OutgoingMailMode;
+  effectiveMode: OutgoingMailMode;
+  status: "working" | "problem";
+};
+export type OutgoingMailView = OutgoingMailSummary & {
+  smtp:
+    | (Omit<OutgoingSmtpInput, "revision" | "password" | "provider"> & {
+        provider: "smtp" | "google" | "microsoft365";
+        passwordSet: boolean;
+      })
+    | null;
+  lastError: string | null;
+  testedAt: string | null;
+  microsoft365Available: boolean;
+  pendingMicrosoft365: {
+    connectionId: string;
+    status: "pending" | "ready" | "problem";
+    mailboxAddress: string;
+    fromAddress: string;
+    error: string | null;
+    expiresAt: string;
+  } | null;
+};
+
 const domain = z
   .string()
   .trim()

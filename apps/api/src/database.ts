@@ -1,6 +1,11 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 export type Tx = Prisma.TransactionClient;
+const transactionEnds = new WeakMap<Tx, number>();
+export function transactionRemainingMs(tx: Tx) {
+  const end = transactionEnds.get(tx);
+  return end === undefined ? Infinity : Math.max(0, end - performance.now());
+}
 export async function lockBillingReconciliation(tx: Tx, tenantId: string) {
   // Lock before reading live provider state and before taking configuration/tenant row locks.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`billing:${tenantId}`},0))`;
@@ -27,10 +32,15 @@ export class Database extends PrismaClient implements OnModuleDestroy {
   withTenant<T>(tenantId: string, work: (tx: Tx) => Promise<T>): Promise<T> {
     return this.$transaction(
       async (tx) => {
-        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
-        const active = await tx.tenant.findFirst({ where: { id: tenantId, active: true } });
-        if (!active) throw new Error("Tenant unavailable");
-        return work(tx);
+        transactionEnds.set(tx, performance.now() + 15000);
+        try {
+          await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+          const active = await tx.tenant.findFirst({ where: { id: tenantId, active: true } });
+          if (!active) throw new Error("Tenant unavailable");
+          return await work(tx);
+        } finally {
+          transactionEnds.delete(tx);
+        }
       },
       { maxWait: 10000, timeout: 15000 },
     );

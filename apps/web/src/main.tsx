@@ -13,6 +13,7 @@ import { Activation, Profile } from "./workspaces/employee/people";
 import { Recovery } from "./recovery";
 import { Billing, Signup } from "./billing";
 import type { SessionView } from "./types";
+import { captureMailHandoff } from "./mail-handoff";
 import {
   Failure,
   Loading,
@@ -22,6 +23,7 @@ import {
   NewIncident,
   IncidentDetail,
 } from "./workspaces/support/pages";
+captureMailHandoff();
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });

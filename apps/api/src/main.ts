@@ -39,6 +39,12 @@ import {
 } from "./operator-access.js";
 import { OperatorConsoleController, OperatorConsoleService } from "./operator-console.js";
 import {
+  OutgoingEmailController,
+  OutgoingEmailService,
+  Microsoft365MailCallbackController,
+  OperatorOutgoingEmailController,
+} from "./outgoing-email.js";
+import {
   PlatformMailSettingsController,
   PlatformMailSettingsService,
 } from "./platform-mail-settings.js";
@@ -266,6 +272,9 @@ class AdminController {
   controllers: [
     OperatorAuthController,
     OperatorConsoleController,
+    OutgoingEmailController,
+    Microsoft365MailCallbackController,
+    OperatorOutgoingEmailController,
     PlatformMailSettingsController,
     OperatorTicketsController,
     TenantOperatorAccessController,
@@ -291,6 +300,7 @@ class AdminController {
   providers: [
     OperatorAuthService,
     OperatorConsoleService,
+    OutgoingEmailService,
     PlatformMailSettingsService,
     OperatorGuard,
     OperatorAccessService,

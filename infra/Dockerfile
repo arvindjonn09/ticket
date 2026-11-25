@@ -46,7 +46,8 @@ USER node
 EXPOSE 4311
 CMD ["node", "dist/main.js"]
 
-FROM mcr.microsoft.com/playwright:v1.65.0-noble AS e2e
+# Keep package/image aligned; 1.65.x Firefox crashes on ARIA reflection (playwright#44135).
+FROM mcr.microsoft.com/playwright:v1.64.1-noble AS e2e
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 RUN npm install -g pnpm@10.34.9
 WORKDIR /app

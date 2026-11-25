@@ -126,6 +126,38 @@ export function validateProduction(env, allowLocal = false) {
     ((env.SMTP_PORT ?? "587") === "587" && (env.SMTP_SECURE ?? "false") !== "false")
   )
     issues.push("Use SMTP_SECURE=true for port 465, or false with STARTTLS on port 587");
+  if (
+    ["M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_CLIENT_SECRET_FILE", "M365_REDIRECT_URI"].some(
+      (key) => env[key]?.trim(),
+    )
+  ) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        env.M365_CLIENT_ID ?? "",
+      )
+    )
+      issues.push("M365_CLIENT_ID must be the Entra application UUID");
+    if (!!env.M365_CLIENT_SECRET?.trim() === !!env.M365_CLIENT_SECRET_FILE?.trim())
+      issues.push("Configure exactly one of M365_CLIENT_SECRET or M365_CLIENT_SECRET_FILE");
+    try {
+      const callback = new URL(env.M365_REDIRECT_URI);
+      const origin = env.PLATFORM_MODE === "hosted" ? env.PUBLIC_SITE_ORIGIN : env.APP_ORIGIN;
+      if (
+        callback.protocol !== "https:" ||
+        callback.origin !== origin ||
+        callback.pathname !== "/api/mail/microsoft365/callback" ||
+        callback.search ||
+        callback.hash ||
+        callback.username ||
+        callback.password
+      )
+        throw new Error("Invalid callback");
+    } catch {
+      issues.push(
+        "M365_REDIRECT_URI must be the exact HTTPS public application callback /api/mail/microsoft365/callback",
+      );
+    }
+  }
   return issues;
 }
 

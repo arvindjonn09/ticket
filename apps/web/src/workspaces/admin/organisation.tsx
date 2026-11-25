@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { QRCodeCanvas } from "qrcode.react";
@@ -523,7 +524,10 @@ function RoutingPreview({ config }: { config: AdminConfig }) {
 export function OrganisationSetup({ session }: { session: SessionView }) {
   const { t } = useTranslation();
   const [saved, setSaved] = useState(false);
-  const [section, setSection] = useState("groups");
+  const [params] = useSearchParams();
+  const [section, setSection] = useState(() =>
+    params.get("section") === "email" ? "email" : "groups",
+  );
   const platform = useQuery({
     queryKey: ["platform-host"],
     queryFn: () => api<{ mode: string }>("/platform/host"),

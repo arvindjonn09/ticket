@@ -61,6 +61,8 @@ const ticketTables = [
   "outbox",
 ] as const;
 const tenantTables = [
+  "mail_oauth_connections",
+  "tenant_outgoing_mail",
   "tenant_mail_deliveries",
   "tenant_budgets",
   "automation_actions",

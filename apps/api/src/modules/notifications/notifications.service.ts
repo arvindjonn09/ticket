@@ -23,6 +23,7 @@ import { replyTokenHash } from "../inbound-mail/inbound-mail.adapter.js";
 import { platformMode, tenantOrigin } from "../../platform.js";
 import { SaasService } from "../billing/saas.service.js";
 import { brandedMailText } from "../../branding.js";
+import { OutgoingEmailService } from "../../outgoing-email.js";
 
 const jobSchema = z.object({ tenantId: z.string().uuid(), eventId: z.string().uuid() }).strict();
 const queue = "ticket-notification";
@@ -45,6 +46,7 @@ export class NotificationWorker {
     private readonly sla: SlaService,
     private readonly inbound: InboundMailService,
     private readonly saas: SaasService,
+    private readonly outgoing: OutgoingEmailService,
   ) {
     if (
       !process.env.DATABASE_URL ||
@@ -116,6 +118,7 @@ export class NotificationWorker {
         this.boss.send(provisioningQueue, { signupId }),
       );
       await this.saas.dispatchPublicMail();
+      await this.outgoing.dispatchNotices();
       if (Date.now() - this.lastAutomationAt > 60000) {
         await this.automation.dispatch();
         this.lastAutomationAt = Date.now();

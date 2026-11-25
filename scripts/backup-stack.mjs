@@ -255,7 +255,7 @@ try {
    if(!/^[a-z_][a-z0-9_]*$/.test(tablename)) throw new Error('Unsupported public table name');
    counts[tablename]=String((await db.$queryRawUnsafe('SELECT count(*) AS total FROM public."'+tablename+'"'))[0].total);
   }
-  const secrets={mfa:0,invitations:0,recoveries:0,recoveryRequests:0,operators:0,publicMail:0,inboundMail:0};
+  const secrets={mfa:0,invitations:0,recoveries:0,recoveryRequests:0,operators:0,publicMail:0,inboundMail:0,platformMail:0,outgoingMail:0,oauthCache:0,oauthPkce:0};
   for(const row of await db.user.findMany({where:{mfaSecret:{not:null}},select:{id:true,tenantId:true,mfaSecret:true}})) {
    const value=decryptSecret(row.mfaSecret,row.tenantId+':'+row.id); secrets.mfa++;
    if(fixture && row.id===fixture.userId && value!=='JBSWY3DPEHPK3PXP') throw new Error('Restored MFA fixture differs');
@@ -273,12 +273,19 @@ try {
    if(typeof value.organisation!=='string'||typeof value.email!=='string') throw new Error('Invalid restored recovery request');
    if(fixture && row.id===fixture.requestId && (value.organisation!==fixture.slug||value.email!=='backup-fixture@example.invalid')) throw new Error('Restored recovery request fixture differs');
   }
-  for(const [table,column,kind] of [['operators','encrypted_mfa_secret','operators'],['public_mail_outbox','encrypted_url','publicMail'],['inbound_mail_settings','encrypted_webhook_secret','inboundMail']]) {
+  for(const [table,column,kind,purpose] of [
+   ['operators','encrypted_mfa_secret','operators',row=>'operator:'+row.id],
+   ['public_mail_outbox','encrypted_url','publicMail',row=>row.identity],
+   ['inbound_mail_settings','encrypted_webhook_secret','inboundMail',row=>'inbound-mail:'+row.tenant_id],
+   ['platform_mail_profiles','encrypted_password','platformMail',()=>'platform-smtp'],
+   ['tenant_outgoing_mail','encrypted_secret','outgoingMail',row=>'smtp:'+row.tenant_id],
+   ['mail_oauth_connections','encrypted_cache','oauthCache',row=>'smtp:'+row.tenant_id],
+   ['mail_oauth_connections','encrypted_pkce','oauthPkce',row=>'smtp-oauth-state:'+row.tenant_id+':'+row.id],
+  ]) {
    const [present]=await db.$queryRawUnsafe('SELECT to_regclass($1) IS NOT NULL AS present','public.'+table);
    if(!present.present) continue; // A retained v1 backup may predate these modules.
    for(const row of await db.$queryRawUnsafe('SELECT * FROM '+table+' WHERE '+column+' IS NOT NULL')) {
-    const identity=kind==='operators'?'operator:'+row.id:kind==='publicMail'?row.identity:'inbound-mail:'+row.tenant_id;
-    decryptSecret(row[column],identity);secrets[kind]++;
+    decryptSecret(row[column],purpose(row));secrets[kind]++;
    }
   }
   const objects=[];
@@ -774,7 +781,16 @@ export async function verifyBackup(docker, directory, key) {
     );
     const expectedSnapshot = {
       ...manifest.snapshot,
-      secrets: { operators: 0, publicMail: 0, inboundMail: 0, ...manifest.snapshot.secrets },
+      secrets: {
+        operators: 0,
+        publicMail: 0,
+        inboundMail: 0,
+        platformMail: 0,
+        outgoingMail: 0,
+        oauthCache: 0,
+        oauthPkce: 0,
+        ...manifest.snapshot.secrets,
+      },
     };
     if (!isDeepStrictEqual(restored, expectedSnapshot))
       throw new Error(

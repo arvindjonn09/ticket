@@ -16,8 +16,20 @@ it("guides tenant receiving and default sending with a safe delivery test", () =
     tenant: { id: "tenant", name: "Demo", brandName: "Demo", slug: "demo" },
     csrfToken: "csrf",
   };
+  const cache = new QueryClient();
+  cache.setQueryData(["outgoing-email", session.tenant.id], {
+    revision: 0,
+    mode: "platform",
+    effectiveMode: "platform",
+    status: "working",
+    smtp: null,
+    lastError: null,
+    testedAt: null,
+    microsoft365Available: false,
+    pendingMicrosoft365: null,
+  });
   const html = renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={cache}>
       <OrganisationEmail session={session} />
     </QueryClientProvider>,
   );

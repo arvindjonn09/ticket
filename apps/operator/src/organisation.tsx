@@ -6,6 +6,7 @@ import {
   type OperatorSessionView,
 } from "@astrama/contracts";
 import { ApiError, date, type Call, type Failure, type Organisation, type Plan } from "./api";
+import { OrganisationMail } from "./organisation-mail";
 
 export function PlanEditor({
   plan,
@@ -508,6 +509,12 @@ export function OrganisationDetail({
           </dl>
         </section>
       </div>
+      <OrganisationMail
+        id={org.id}
+        owner={session.operator.role === "owner"}
+        call={call}
+        fail={fail}
+      />
       <Actions
         org={org}
         plans={plans}

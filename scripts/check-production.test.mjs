@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { resolve, join } from "node:path";
 import { mkdtemp, writeFile, unlink, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -111,4 +111,30 @@ test("production environment parser accepts required S3 variable names", async (
     await unlink(file);
     await rmdir(directory);
   }
+});
+
+test("Microsoft 365 is optional and rejects partial credentials and foreign OAuth callbacks", () => {
+  const microsoftIssues = (env) => validateProduction(env).filter((issue) => /M365_/.test(issue));
+  assert.deepEqual(microsoftIssues({}), []);
+  const env = {
+    APP_ORIGIN: "https://desk.example.com",
+    M365_CLIENT_ID: randomUUID(),
+    M365_CLIENT_SECRET_FILE: "/run/microsoft365/client-secret",
+    M365_REDIRECT_URI: "https://desk.example.com/api/mail/microsoft365/callback",
+  };
+  assert.deepEqual(microsoftIssues(env), []);
+  assert.ok(microsoftIssues({ M365_CLIENT_ID: env.M365_CLIENT_ID }).length >= 2);
+  assert.equal(microsoftIssues({ ...env, M365_CLIENT_SECRET: "synthetic-secret" }).length, 1);
+  for (const callback of [
+    "http://desk.example.com/api/mail/microsoft365/callback",
+    "https://foreign.example.com/api/mail/microsoft365/callback",
+    `${env.M365_REDIRECT_URI}?next=foreign`,
+    `${env.M365_REDIRECT_URI}#fragment`,
+    "https://desk.example.com/wrong-path",
+  ])
+    assert.equal(microsoftIssues({ ...env, M365_REDIRECT_URI: callback }).length, 1);
+  assert.deepEqual(
+    microsoftIssues({ ...env, PLATFORM_MODE: "hosted", PUBLIC_SITE_ORIGIN: env.APP_ORIGIN }),
+    [],
+  );
 });

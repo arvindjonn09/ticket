@@ -20,7 +20,7 @@ export async function rotateEncryptionKey(
     async (tx) => {
       // Fail closed for an owner constrained by FORCE RLS instead of reporting a partial/empty rotation.
       await tx.$executeRaw`SET LOCAL row_security=off`;
-      await tx.$executeRaw`LOCK TABLE public.users,public.operators,public.invitation_mails,public.password_recoveries,public.password_recovery_requests,public.public_mail_outbox,public.inbound_mail_settings,public.platform_mail_profiles IN ACCESS EXCLUSIVE MODE`;
+      await tx.$executeRaw`LOCK TABLE public.users,public.operators,public.invitation_mails,public.password_recoveries,public.password_recovery_requests,public.public_mail_outbox,public.inbound_mail_settings,public.platform_mail_profiles,public.tenant_outgoing_mail,public.mail_oauth_connections IN ACCESS EXCLUSIVE MODE`;
       const secrets = await tx.$queryRaw<
         { id: string; tenant_id: string; secret: string }[]
       >`SELECT id,tenant_id,mfa_secret AS secret FROM users WHERE mfa_secret IS NOT NULL`;
@@ -41,6 +41,17 @@ export async function rotateEncryptionKey(
         SELECT tenant_id,encrypted_webhook_secret AS secret FROM inbound_mail_settings WHERE encrypted_webhook_secret IS NOT NULL`;
       const platformProfiles = await tx.$queryRaw<{ id: string; secret: string }[]>`
         SELECT id,encrypted_password AS secret FROM platform_mail_profiles`;
+      const tenantSmtp = await tx.$queryRaw<
+        { tenant_id: string; secret: string }[]
+      >`SELECT tenant_id,encrypted_secret AS secret FROM tenant_outgoing_mail WHERE encrypted_secret IS NOT NULL`;
+      const oauth = await tx.$queryRaw<
+        {
+          id: string;
+          tenant_id: string;
+          encrypted_pkce: string | null;
+          encrypted_cache: string | null;
+        }[]
+      >`SELECT id,tenant_id,encrypted_pkce,encrypted_cache FROM mail_oauth_connections WHERE encrypted_pkce IS NOT NULL OR encrypted_cache IS NOT NULL`;
       const reencrypt = (secret: string, identity: string) => {
         const plain = decryptSecret(secret, identity, oldKey),
           encrypted = encryptSecret(plain, identity, newKey);
@@ -91,6 +102,21 @@ export async function rotateEncryptionKey(
         if (apply)
           await tx.$executeRaw`UPDATE platform_mail_profiles SET encrypted_password=${encrypted} WHERE id=${row.id}::uuid`;
       }
+      for (const row of tenantSmtp) {
+        const encrypted = reencrypt(row.secret, `smtp:${row.tenant_id}`);
+        if (apply)
+          await tx.$executeRaw`UPDATE tenant_outgoing_mail SET encrypted_secret=${encrypted} WHERE tenant_id=${row.tenant_id}::uuid`;
+      }
+      for (const row of oauth) {
+        const pkce = row.encrypted_pkce
+          ? reencrypt(row.encrypted_pkce, `smtp-oauth-state:${row.tenant_id}:${row.id}`)
+          : null;
+        const cache = row.encrypted_cache
+          ? reencrypt(row.encrypted_cache, `smtp:${row.tenant_id}`)
+          : null;
+        if (apply)
+          await tx.$executeRaw`UPDATE mail_oauth_connections SET encrypted_pkce=${pkce},encrypted_cache=${cache} WHERE tenant_id=${row.tenant_id}::uuid AND id=${row.id}::uuid`;
+      }
       return {
         applied: apply,
         mfaSecrets: secrets.length,
@@ -101,6 +127,8 @@ export async function rotateEncryptionKey(
         publicMailLinks: publicMails.length,
         inboundWebhookSecrets: inbound.length,
         platformSmtpProfiles: platformProfiles.length,
+        tenantSmtpSecrets: tenantSmtp.length,
+        mailOAuthConnections: oauth.length,
       };
     },
     { maxWait: 10000, timeout: 120000 },

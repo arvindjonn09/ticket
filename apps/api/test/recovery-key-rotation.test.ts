@@ -32,6 +32,8 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       await isolated.$executeRaw`CREATE TABLE public_mail_outbox(id uuid PRIMARY KEY,identity text,encrypted_url text)`;
       await isolated.$executeRaw`CREATE TABLE inbound_mail_settings(tenant_id uuid PRIMARY KEY,encrypted_webhook_secret text)`;
       await isolated.$executeRaw`CREATE TABLE platform_mail_profiles(id uuid PRIMARY KEY,encrypted_password text)`;
+      await isolated.$executeRaw`CREATE TABLE tenant_outgoing_mail(tenant_id uuid PRIMARY KEY,encrypted_secret text)`;
+      await isolated.$executeRaw`CREATE TABLE mail_oauth_connections(id uuid PRIMARY KEY,tenant_id uuid,encrypted_pkce text,encrypted_cache text)`;
       const { encryptSecret, encryptionKey } = await import("../dist/mfa.js");
       mfaCipher = encryptSecret(
         "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
@@ -56,6 +58,8 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       await isolated.$executeRaw`INSERT INTO public_mail_outbox VALUES(${request}::uuid,${"signup-fixture"},${encryptSecret("public-verification-fixture", "signup-fixture", encryptionKey(oldKey))})`;
       await isolated.$executeRaw`INSERT INTO inbound_mail_settings VALUES(${tenant}::uuid,${encryptSecret("inbound-secret-fixture", `inbound-mail:${tenant}`, encryptionKey(oldKey))})`;
       await isolated.$executeRaw`INSERT INTO platform_mail_profiles VALUES(${request}::uuid,${encryptSecret("smtp-password-fixture", "platform-smtp", encryptionKey(oldKey))})`;
+      await isolated.$executeRaw`INSERT INTO tenant_outgoing_mail VALUES(${tenant}::uuid,${encryptSecret("tenant-smtp-fixture", `smtp:${tenant}`, encryptionKey(oldKey))})`;
+      await isolated.$executeRaw`INSERT INTO mail_oauth_connections VALUES(${request}::uuid,${tenant}::uuid,${encryptSecret("pkce-fixture", `smtp-oauth-state:${tenant}:${request}`, encryptionKey(oldKey))},${encryptSecret("cache-fixture", `smtp:${tenant}`, encryptionKey(oldKey))})`;
     });
     afterAll(async () => {
       await isolated?.$disconnect();
@@ -80,6 +84,8 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
         publicMailLinks: 1,
         inboundWebhookSecrets: 1,
         platformSmtpProfiles: 1,
+        tenantSmtpSecrets: 1,
+        mailOAuthConnections: 1,
       });
       const [row] = await isolated.$queryRaw<
         { mfa_secret: string }[]
@@ -172,6 +178,25 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       expect(() =>
         decryptSecret(profile!.encrypted_password, "platform-smtp", encryptionKey(oldKey)),
       ).toThrow();
+      const [smtp] = await isolated.$queryRaw<
+        { encrypted_secret: string }[]
+      >`SELECT encrypted_secret FROM tenant_outgoing_mail`;
+      expect(decryptSecret(smtp!.encrypted_secret, `smtp:${tenant}`, encryptionKey(newKey))).toBe(
+        "tenant-smtp-fixture",
+      );
+      const [connection] = await isolated.$queryRaw<
+        { encrypted_pkce: string; encrypted_cache: string }[]
+      >`SELECT encrypted_pkce,encrypted_cache FROM mail_oauth_connections`;
+      expect(
+        decryptSecret(
+          connection!.encrypted_pkce,
+          `smtp-oauth-state:${tenant}:${request}`,
+          encryptionKey(newKey),
+        ),
+      ).toBe("pkce-fixture");
+      expect(
+        decryptSecret(connection!.encrypted_cache, `smtp:${tenant}`, encryptionKey(newKey)),
+      ).toBe("cache-fixture");
     });
   },
 );

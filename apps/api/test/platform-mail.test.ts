@@ -5,6 +5,10 @@ import {
   platformMailDomain,
   tenantMailOptions,
 } from "../src/platform-mail.js";
+import {
+  isLoopMessage,
+  type InboundMessageInput,
+} from "../src/modules/inbound-mail/inbound-mail.adapter.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -38,7 +42,39 @@ describe("platform mail identity", () => {
     });
     expect(options.replyTo).toBe("acme+it+t.secret@in.example.test");
     expect(options.messageId).toBe("<delivery-id@mail.example.test>");
-    expect(options.headers).toEqual({ References: "<original@customer.test>" });
+    expect(options.headers).toEqual({
+      References: "<original@customer.test>",
+      "Auto-Submitted": "auto-generated",
+    });
+  });
+
+  it("marks own-domain notifications as automatic so a forwarded copy cannot create another ticket", () => {
+    for (const headers of [{ "auto-submitted": "no" }, [{ key: "Auto-Submitted", value: "no" }]]) {
+      const message = tenantMailOptions(
+        { brandName: "Acme", slug: "acme" },
+        { headers },
+        {
+          ...env,
+          PLATFORM_MAIL_DOMAIN: "customer.test",
+          PLATFORM_PROFILE_FROM: "support@customer.test",
+        },
+      );
+      const automatic = Array.isArray(message.headers)
+        ? message.headers.find((header) => header.key === "Auto-Submitted")?.value
+        : message.headers?.["Auto-Submitted"];
+      expect(automatic).toBe("auto-generated");
+      expect(
+        isLoopMessage(
+          {
+            messageId: message.messageId!,
+            sender: "support@customer.test",
+            headers: { autoSubmitted: automatic as string },
+          } as InboundMessageInput,
+          ["acme@in.example.test"],
+          "app.example.test",
+        ),
+      ).toBe(true);
+    }
   });
 
   it("uses each tenant's inbound alias for mail without ticket correlation", () => {

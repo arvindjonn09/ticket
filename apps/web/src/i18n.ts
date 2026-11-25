@@ -8,6 +8,7 @@ void i18n.use(initReactI18next).init({
   resources: {
     en: {
       translation: {
+        poweredByAstrama: "Powered by Astrama",
         signup: {
           title: "Create your organisation",
           intro:

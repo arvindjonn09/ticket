@@ -3,6 +3,7 @@ import { createTransport } from "nodemailer";
 import { Database, lockConfiguration } from "./database.js";
 import { decryptSecret } from "./mfa.js";
 import { platformMode, tenantOrigin } from "./platform.js";
+import { brandedMailText } from "./branding.js";
 
 /** Durable invitation outbox; construction does not connect or send anything. */
 @Injectable()
@@ -83,7 +84,11 @@ export class InvitationMailer {
             from: process.env.SMTP_FROM,
             to: user.email,
             subject: "Set up your service desk account",
-            text: `Your organisation invited you to its service desk. Set your password using this single-use link:\n${url}\n\nThis invitation expires at ${user.invitationExpiresAt.toISOString()}. If you were not expecting it, contact your organisation administrator.`,
+            text: await brandedMailText(
+              tx,
+              tenantId,
+              `Your organisation invited you to its service desk. Set your password using this single-use link:\n${url}\n\nThis invitation expires at ${user.invitationExpiresAt.toISOString()}. If you were not expecting it, contact your organisation administrator.`,
+            ),
             messageId: `<invitation-${item.id}@${new URL(tenantOrigin(tenant.slug)).hostname}>`,
           });
           await tx.invitationMail.updateMany({

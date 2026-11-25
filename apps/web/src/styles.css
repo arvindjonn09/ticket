@@ -644,6 +644,18 @@ tbody tr:hover {
   display: flex;
   justify-content: space-between;
 }
+.powered-by-astrama {
+  color: var(--muted);
+  font-size: 12px;
+}
+.powered-by-astrama a {
+  color: inherit;
+  text-decoration: underline;
+}
+.login-branding {
+  margin-top: 24px;
+  text-align: center;
+}
 .empty-state {
   padding: 65px 24px 70px;
   text-align: center;

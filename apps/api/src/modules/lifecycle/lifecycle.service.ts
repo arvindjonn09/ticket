@@ -5,6 +5,7 @@ import { Database, lockConfigurationExclusive } from "../../database.js";
 import { tenantOrigin } from "../../platform.js";
 import { deleteExpiredTenant } from "../../operator-data.js";
 import { processOperatorJobs } from "../../operator-jobs.js";
+import { tenantBranding, brandedText } from "../../branding.js";
 
 type LifecycleTenant = {
   tenant_id: string;
@@ -173,6 +174,7 @@ export class TenantLifecycleService implements OnModuleDestroy {
           slug: current.slug,
           name: current.name,
           deleteAfter: current.deleteAfter,
+          branding: await tenantBranding(tx, current.id),
         };
       });
       if (!message?.to.length) continue;
@@ -181,7 +183,10 @@ export class TenantLifecycleService implements OnModuleDestroy {
         from: process.env.SMTP_FROM,
         to: message.to,
         subject: `Astrama: ${message.name} data deletion in ${days} day${days === 1 ? "" : "s"}`,
-        text: `Your organisation ${message.name} (${message.slug}) is read-only. Its data is scheduled for deletion on ${message.deleteAfter?.toISOString() ?? "the scheduled date"}. Export your data or contact billing before that date.\n\n${tenantOrigin(message.slug)}/billing`,
+        text: brandedText(
+          `Your organisation ${message.name} (${message.slug}) is read-only. Its data is scheduled for deletion on ${message.deleteAfter?.toISOString() ?? "the scheduled date"}. Export your data or contact billing before that date.\n\n${tenantOrigin(message.slug)}/billing`,
+          message.branding,
+        ),
       });
       await this.db.withTenant(tenant.tenant_id, (tx) =>
         tx.tenantLifecycleNotice.updateMany({

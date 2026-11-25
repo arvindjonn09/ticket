@@ -47,7 +47,13 @@ function App() {
     queryKey: ["platform-host"],
     queryFn: async () => {
       try {
-        return await api<{ mode: string; kind: string; tenantSlug?: string }>("/platform/host");
+        return await api<{
+          mode: string;
+          kind: string;
+          tenantSlug?: string;
+          hideBranding?: boolean;
+          brandingUrl?: string;
+        }>("/platform/host");
       } catch (error) {
         if (error instanceof ApiError && error.status === 404)
           return { mode: "hosted", kind: "unknown" };
@@ -97,7 +103,11 @@ function App() {
     );
   if (!session.data)
     return (
-      <Login {...(host.data?.kind === "tenant" ? { organisation: host.data.tenantSlug } : {})} />
+      <Login
+        {...(host.data?.kind === "tenant" ? { organisation: host.data.tenantSlug } : {})}
+        hideBranding={host.data?.hideBranding}
+        brandingUrl={host.data?.brandingUrl}
+      />
     );
   configureDates(session.data.tenant);
   return (

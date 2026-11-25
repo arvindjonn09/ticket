@@ -4,6 +4,7 @@ import { Database } from "./database.js";
 import { decryptSecret } from "./mfa.js";
 import { RecoveryService } from "./recovery.js";
 import { platformMode, tenantOrigin } from "./platform.js";
+import { brandedMailText } from "./branding.js";
 
 type RecoveryMail = {
   id: string;
@@ -92,7 +93,11 @@ export class RecoveryMailer {
             from: process.env.SMTP_FROM,
             to: user.email,
             subject: "Reset your service desk password",
-            text: `A password reset was requested for your service desk account. This single-use link expires at ${item.expires_at.toISOString()}:\n${url}\n\nYour authenticator remains required. If you did not request this, ignore this email.`,
+            text: await brandedMailText(
+              tx,
+              tenantId,
+              `A password reset was requested for your service desk account. This single-use link expires at ${item.expires_at.toISOString()}:\n${url}\n\nYour authenticator remains required. If you did not request this, ignore this email.`,
+            ),
             messageId: `<recovery-${id}@${new URL(tenantOrigin(tenant.slug)).hostname}>`,
           });
           await tx.$executeRaw`UPDATE password_recoveries SET status='sent',encrypted_url=NULL,sent_at=now(),attempts=attempts+1,last_error=NULL WHERE tenant_id=${tenantId}::uuid AND id=${id}::uuid AND status='pending'`;

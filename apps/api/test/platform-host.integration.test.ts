@@ -3,6 +3,8 @@ import { PrismaClient } from "@prisma/client";
 import { hash, argon2id } from "argon2";
 import { randomUUID } from "node:crypto";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
+import { Database } from "../dist/database.js";
+import { brandedMailText } from "../src/branding.js";
 
 const enabled = Boolean(process.env.DATABASE_URL && process.env.MIGRATION_DATABASE_URL);
 const password = "Hosted-test-password-2026!";
@@ -13,6 +15,7 @@ describe.skipIf(!enabled)("hosted tenant routing", () => {
   const previous = new Map<string, string | undefined>();
   const tenants: { id: string; slug: string }[] = [];
   let inactiveSlug = "";
+  const brandingPlan = `branding-${randomUUID()}`;
   const env = {
     NODE_ENV: "test",
     PLATFORM_MODE: "hosted",
@@ -63,6 +66,7 @@ describe.skipIf(!enabled)("hosted tenant routing", () => {
         await owner.tenant.delete({ where: { id: tenant.id } });
       }
       if (inactiveSlug) await owner.tenant.deleteMany({ where: { slug: inactiveSlug } });
+      await owner.billingPlan.deleteMany({ where: { id: brandingPlan } });
       await owner.$disconnect();
     }
     for (const [key, value] of previous)
@@ -82,6 +86,7 @@ describe.skipIf(!enabled)("hosted tenant routing", () => {
       payload: { organisation: first.slug, email: "host-0@test.invalid", password },
     });
     expect(login.statusCode, login.body).toBe(201);
+    expect(login.json().tenant.hideBranding).toBe(false);
     const csrf = (login.json() as { csrfToken: string }).csrfToken;
     const cookieHeader = login.headers["set-cookie"];
     const cookie = (Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader)!.split(";")[0]!;
@@ -179,4 +184,42 @@ describe.skipIf(!enabled)("hosted tenant routing", () => {
       expect(write.statusCode).toBe(status === "read_only" ? 403 : 201);
     }
   }, 120000);
+
+  it("shows Astrama by default and hides it only for the tenant's assigned plan, including retired plans", async () => {
+    const tenant = tenants[0]!;
+    const host = `${tenant.slug}.astrama.test`;
+    const db = app.get(Database);
+    const platformHost = () =>
+      app.inject({ method: "GET", url: "/api/platform/host", headers: { host } });
+    expect((await platformHost()).json()).toMatchObject({
+      hideBranding: false,
+      brandingUrl: `https://astrama.test/?ref=${tenant.slug}`,
+    });
+    const text = () =>
+      db.withTenant(tenant.id, (tx) => brandedMailText(tx, tenant.id, "Private update"));
+    expect(await text()).toContain(
+      `Sent by Astrama ticketing: https://astrama.test/?ref=${tenant.slug}`,
+    );
+    const plan = await owner.billingPlan.create({
+      data: {
+        id: brandingPlan,
+        name: "Branding fixture",
+        stripePriceId: `price_${randomUUID()}`,
+        seatLimit: 10,
+        billingInterval: "month",
+        active: false,
+      },
+    });
+    expect(plan.hideBranding).toBe(false);
+    await owner.tenant.update({ where: { id: tenant.id }, data: { planId: plan.id } });
+    expect(await text()).toContain("Sent by Astrama ticketing");
+    await owner.billingPlan.update({ where: { id: plan.id }, data: { hideBranding: true } });
+    expect(await text()).toBe("Private update");
+    expect((await platformHost()).json().hideBranding).toBe(true);
+    await expect(
+      db.withTenant(tenants[1]!.id, (tx) => brandedMailText(tx, tenant.id, "Other tenant")),
+    ).rejects.toThrow();
+    await owner.billingPlan.update({ where: { id: plan.id }, data: { hideBranding: false } });
+    expect((await platformHost()).json().hideBranding).toBe(false);
+  });
 });

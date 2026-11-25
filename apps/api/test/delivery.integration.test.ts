@@ -533,6 +533,10 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
           `${process.env.MAILPIT_URL}/api/v1/message/${messages[0]!.ID}`,
         ).then((r) => r.json())) as { Text: string };
         expect(message.Text).toContain("You have 1 service desk updates");
+        expect(message.Text).toContain("Sent by Astrama ticketing");
+        expect(message.Text).toContain(
+          `?ref=${(await owner.tenant.findUniqueOrThrow({ where: { id: tenantId } })).slug}`,
+        );
         expect(message.Text).not.toContain("Attachment integration test");
         expect(message.Text).not.toContain("Response timing fixture");
       }
@@ -581,6 +585,52 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       await owner.user.update({ where: { id: employee.id }, data: { active: false } });
     }
   }, 30000);
+  it.skipIf(!process.env.MAILPIT_URL)(
+    "omits the delivered email footer only when the assigned plan hides branding",
+    async () => {
+      const planId = `branding-${randomUUID()}`;
+      const tenant = await owner.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+      const mailbox = async () =>
+        (
+          (await fetch(
+            `${process.env.MAILPIT_URL}/api/v1/search?query=${encodeURIComponent("to:agent@delivery.test")}`,
+          ).then((r) => r.json())) as { messages: { ID: string }[] }
+        ).messages;
+      const before = new Set((await mailbox()).map((message) => message.ID));
+      await owner.billingPlan.create({
+        data: {
+          id: planId,
+          name: "Hidden branding fixture",
+          stripePriceId: `price_${randomUUID()}`,
+          seatLimit: 10,
+          billingInterval: "month",
+          hideBranding: true,
+        },
+      });
+      try {
+        await owner.tenant.update({ where: { id: tenantId }, data: { planId } });
+        const event = await owner.outbox.create({
+          data: {
+            tenantId,
+            ticketId,
+            event: "sla.breach",
+            payload: { kind: "sla", audience: "internal", target: "resolution", stage: "breach" },
+          },
+        });
+        await worker.deliver({ tenantId, eventId: event.id });
+        const delivered = (await mailbox()).filter((message) => !before.has(message.ID));
+        expect(delivered).toHaveLength(1);
+        const message = (await fetch(
+          `${process.env.MAILPIT_URL}/api/v1/message/${delivered[0]!.ID}`,
+        ).then((r) => r.json())) as { Text: string };
+        expect(message.Text).not.toContain("Sent by Astrama ticketing");
+        expect(message.Text).toContain("Sign in to view it");
+      } finally {
+        await owner.tenant.update({ where: { id: tenantId }, data: { planId: tenant.planId } });
+        await owner.billingPlan.delete({ where: { id: planId } });
+      }
+    },
+  );
   it.skipIf(process.env.RUN_QUEUE_TESTS !== "true")(
     "dispatches through PostgreSQL jobs and preserves delivery deduplication after restart",
     async () => {

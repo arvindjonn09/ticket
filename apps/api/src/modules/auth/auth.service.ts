@@ -22,6 +22,7 @@ import { Database, lockConfigurationExclusive, type Tx } from "../../database.js
 import { decryptSecret, encryptSecret, verifyTotp } from "../../mfa.js";
 import { expectedRequestOrigin, platformMode, resolveHost } from "../../platform.js";
 import { reserveTenantBudget } from "../../tenant-budgets.js";
+import { tenantBranding } from "../../branding.js";
 export type AuthContext = Actor & { sessionId: string; view: SessionView };
 export type AuthRequest = FastifyRequest & { auth: AuthContext };
 export const tokenHash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -154,6 +155,7 @@ export class AuthService {
     );
     return {
       ...tenant,
+      ...(await this.db.withTenant(tenantId, (tx) => tenantBranding(tx, tenantId))),
       status: tenant.status as "trial" | "active" | "read_only" | "deleted",
       trialEndsAt: tenant.trialEndsAt?.toISOString() ?? null,
       deleteAfter: tenant.deleteAfter?.toISOString() ?? null,

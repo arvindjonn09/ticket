@@ -18,6 +18,7 @@ import { encryptionKey } from "../../mfa.js";
 import { replyTokenHash } from "../inbound-mail/inbound-mail.adapter.js";
 import { platformMode, tenantOrigin } from "../../platform.js";
 import { SaasService } from "../billing/saas.service.js";
+import { brandedMailText } from "../../branding.js";
 
 const jobSchema = z.object({ tenantId: z.string().uuid(), eventId: z.string().uuid() }).strict();
 const queue = "ticket-notification";
@@ -548,9 +549,13 @@ export class NotificationWorker {
               : administratorAlert
                 ? "Service desk configuration needs attention"
                 : `${event.ticket.number}: service desk update`,
-            text: inboundAck
-              ? `Your request ${event.ticket.number} was received. Sign in to choose its category:\n${appOrigin}${path}`
-              : `There is an update in your organisation's service desk. Sign in to view it:\n${appOrigin}${path}`,
+            text: await brandedMailText(
+              tx,
+              data.tenantId,
+              inboundAck
+                ? `Your request ${event.ticket.number} was received. Sign in to choose its category:\n${appOrigin}${path}`
+                : `There is an update in your organisation's service desk. Sign in to view it:\n${appOrigin}${path}`,
+            ),
             headers: { ...replyHeaders, "Message-ID": `<${delivery.id}@${origin.hostname}>` },
             messageId: `<${delivery.id}@${origin.hostname}>`,
           });
@@ -630,7 +635,11 @@ export class NotificationWorker {
             to: user.email,
             subject:
               preference?.mode === "daily" ? "Daily service desk updates" : "Service desk updates",
-            text: `You have ${deliveries.length} service desk updates. Sign in to view them:\n${appOrigin}/tickets`,
+            text: await brandedMailText(
+              tx,
+              group.tenant_id,
+              `You have ${deliveries.length} service desk updates. Sign in to view them:\n${appOrigin}/tickets`,
+            ),
             messageId: `<${randomUUID()}@${origin.hostname}>`,
           });
           await tx.notificationDelivery.updateMany({

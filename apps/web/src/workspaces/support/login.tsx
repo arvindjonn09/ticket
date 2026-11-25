@@ -5,9 +5,10 @@ import { ArrowRight, Check, LifeBuoy, LockKeyhole, Ticket } from "lucide-react";
 import { api } from "../../api";
 import { updateSession } from "../../session";
 import type { SessionView } from "../../types";
+import { PoweredByAstrama, type BrandingProps } from "../../branding";
 import { ThemePicker, Failure } from "./support-shared.js";
 
-export function Login({ organisation }: { organisation?: string }) {
+export function Login({ organisation, ...branding }: { organisation?: string } & BrandingProps) {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const login = useMutation({
@@ -140,6 +141,9 @@ export function Login({ organisation }: { organisation?: string }) {
               <p>{t("demoPassword")}</p>
             </details>
           )}
+          <footer className="login-branding">
+            <PoweredByAstrama {...branding} />
+          </footer>
         </div>
       </section>
     </div>

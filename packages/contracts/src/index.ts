@@ -101,6 +101,8 @@ export const sessionViewSchema = z.object({
     name: z.string(),
     slug: z.string(),
     brandName: z.string(),
+    hideBranding: z.boolean().optional(),
+    brandingUrl: z.string().optional(),
     timezone: z.string().optional(),
     locale: z.string().optional(),
     primaryColour: z.string().optional(),

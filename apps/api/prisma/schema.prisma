@@ -57,6 +57,7 @@ model BillingPlan {
   seatLimit       Int      @map("seat_limit")
   billingInterval String   @map("billing_interval")
   active          Boolean  @default(true)
+  hideBranding    Boolean  @default(false) @map("hide_branding")
   revision        Int      @default(0)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

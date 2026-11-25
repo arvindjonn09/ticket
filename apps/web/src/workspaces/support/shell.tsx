@@ -15,6 +15,7 @@ import {
 import { api } from "../../api";
 import { updateSession } from "../../session";
 import type { SessionView } from "../../types";
+import { PoweredByAstrama } from "../../branding";
 import { ThemePicker, Failure, initials } from "./support-shared.js";
 
 export function Shell({ session }: { session: SessionView }) {
@@ -215,7 +216,7 @@ export function Shell({ session }: { session: SessionView }) {
         </main>
         <footer className="page-footer">
           <span>{session.tenant.brandName}</span>
-          <span>{t("serviceDesk")}</span>
+          <PoweredByAstrama {...session.tenant} />
         </footer>
       </div>
     </div>

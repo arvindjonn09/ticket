@@ -23,6 +23,7 @@ import multipart from "@fastify/multipart";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { platformConfigError, platformMode, resolveHost, tlsDomainAllowed } from "./platform.js";
+import { tenantBranding, brandingUrl } from "./branding.js";
 import {
   BillingController,
   SaasService,
@@ -131,8 +132,20 @@ class PublicController {
     const target = await resolveHost(this.db, request.headers.host);
     if (target.kind === "unknown") throw new NotFoundException("Organisation not found");
     return target.kind === "tenant"
-      ? { mode: "hosted", kind: "tenant", tenantSlug: target.slug }
-      : { mode: platformMode(), kind: target.kind };
+      ? {
+          mode: "hosted",
+          kind: "tenant",
+          tenantSlug: target.slug,
+          ...(await this.db.withTenant(target.tenantId, (tx) =>
+            tenantBranding(tx, target.tenantId),
+          )),
+        }
+      : {
+          mode: platformMode(),
+          kind: target.kind,
+          hideBranding: false,
+          brandingUrl: brandingUrl(""),
+        };
   }
   @Get("internal/tls-allowed")
   async tlsAllowed(@Req() request: FastifyRequest, @Query("domain") domain: string | undefined) {

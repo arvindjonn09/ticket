@@ -25,6 +25,7 @@ import { Database, lockBillingReconciliation } from "../../database.js";
 import { encryptSecret, decryptSecret } from "../../mfa.js";
 import { paymentProvider } from "./payment-provider.js";
 import { platformMode, tenantOrigin, validTenantSlug } from "../../platform.js";
+import { brandedText, brandingUrl } from "../../branding.js";
 
 const signupSchema = z
   .object({
@@ -408,9 +409,12 @@ export class SaasService {
           from: process.env.SMTP_FROM,
           to: item.recipient,
           subject: item.subject,
-          text: isOrganisationLinks
-            ? `Your Astrama organisation links are below. Keep this email private:\n\n${url}\n\nIf you did not request this email, you can ignore it.`
-            : `Use this single-use link to continue:\n${url}\n\nIf you did not request this email, you can ignore it.`,
+          text: brandedText(
+            isOrganisationLinks
+              ? `Your Astrama organisation links are below. Keep this email private:\n\n${url}\n\nIf you did not request this email, you can ignore it.`
+              : `Use this single-use link to continue:\n${url}\n\nIf you did not request this email, you can ignore it.`,
+            { hideBranding: false, brandingUrl: brandingUrl(""), locale: "en" },
+          ),
           messageId: `<public-${item.id}@${new URL(this.publicSiteOrigin()).hostname}>`,
         });
         await this.db.publicMailOutbox.update({

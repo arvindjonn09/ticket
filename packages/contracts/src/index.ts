@@ -1,4 +1,5 @@
 import { z } from "zod";
+export * from "./mail-settings.js";
 export {
   proposedSlaSettings,
   slaSettingsSchema,

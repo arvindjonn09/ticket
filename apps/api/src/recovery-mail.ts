@@ -20,18 +20,14 @@ type RecoveryMail = {
 @Injectable()
 export class RecoveryMailer {
   private dispatching = false;
-  private readonly mail = createPlatformTransport();
+  private readonly mail = createPlatformTransport(() => this.db);
   constructor(
     private readonly db: Database,
     private readonly recovery: RecoveryService,
   ) {}
   async dispatch() {
     if (this.dispatching) return;
-    if (
-      !process.env.SMTP_HOST ||
-      !process.env.SMTP_FROM ||
-      (platformMode() === "single" && !process.env.APP_ORIGIN)
-    )
+    if (platformMode() === "single" && !process.env.APP_ORIGIN)
       throw new Error("Recovery mail configuration is incomplete");
     this.dispatching = true;
     try {

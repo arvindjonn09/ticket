@@ -6,6 +6,7 @@ import type { OperatorSessionView } from "@astrama/contracts";
 import i18n from "./i18n";
 import { api, ApiError, date, type Call, type Failure, type Organisation, type Plan } from "./api";
 import { OrganisationDetail, PlanEditor } from "./organisation";
+import { PlatformEmail } from "./platform-email";
 import "./style.css";
 
 function Authentication({
@@ -420,7 +421,12 @@ function App() {
         ) : (
           <>
             <nav aria-label={t("title")}>
-              {["organisations", "plans", "platformHealth"].map((key) => (
+              {[
+                "organisations",
+                "plans",
+                "platformHealth",
+                ...(session.operator.role === "owner" ? ["platformEmail:title"] : []),
+              ].map((key) => (
                 <button
                   key={key}
                   aria-pressed={section === key}
@@ -435,7 +441,9 @@ function App() {
               ))}
             </nav>
             <main>
-              {section === "platformHealth" ? (
+              {section === "platformEmail:title" && session.operator.role === "owner" ? (
+                <PlatformEmail call={call} fail={fail} />
+              ) : section === "platformHealth" ? (
                 <Health call={call} fail={fail} />
               ) : section === "plans" ? (
                 <Plans call={call} fail={fail} owner={session.operator.role === "owner"} />

@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { createTransport } from "nodemailer";
+import { createPlatformTransport } from "./platform-mail.js";
 import { z } from "zod";
 import { Database } from "./database.js";
 import { operationalHealth } from "./operations.js";
@@ -25,20 +25,7 @@ try {
     process.exitCode = 1;
     if (process.argv.includes("--notify")) {
       const recipient = z.email().parse(process.env.OPERATOR_ALERT_EMAIL);
-      if (!process.env.SMTP_HOST || !process.env.SMTP_FROM)
-        throw new Error("Alert transport is not configured");
-      const mail = createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT ?? 587),
-        secure: process.env.SMTP_SECURE === "true",
-        requireTLS: process.env.NODE_ENV === "production" && process.env.SMTP_SECURE !== "true",
-        connectionTimeout: 5000,
-        greetingTimeout: 5000,
-        socketTimeout: 10000,
-        ...(process.env.SMTP_USER
-          ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }
-          : {}),
-      });
+      const mail = createPlatformTransport(db);
       try {
         await mail.sendMail({
           from: process.env.SMTP_FROM,

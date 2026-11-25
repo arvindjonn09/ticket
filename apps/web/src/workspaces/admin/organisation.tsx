@@ -20,6 +20,7 @@ import { DataPolicyPanel } from "../../data-policy";
 import { OperationsPanel } from "../../operations";
 import { EmailHealthPanel } from "../../email-health";
 import { InboundMailPanel } from "../../inbound-mail";
+import { OrganisationEmail } from "../../organisation-email";
 import { OperatorAccessPanel } from "../../operator-access";
 
 export function AuthenticatorSetup({ session }: { session: SessionView }) {
@@ -579,6 +580,7 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
                 <option value="automation">{t("automationSettings")}</option>
                 <option value="sla">{t("sla.settings")}</option>
                 <option value="inbound-mail">Inbound email</option>
+                <option value="email">{t("organisationEmail:title")}</option>
                 <option value="data-policy">{t("dataPolicySettings")}</option>
                 <option value="operations">{t("serviceHealth")}</option>
                 <option value="email-health">{t("emailHealth:title")}</option>
@@ -604,9 +606,8 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
             <div hidden={section !== "sla"}>
               <SlaPanel session={session} />
             </div>
-            <div hidden={section !== "inbound-mail"}>
-              <InboundMailPanel session={session} />
-            </div>
+            {section === "inbound-mail" && <InboundMailPanel session={session} />}
+            {section === "email" && <OrganisationEmail session={session} />}
             <div hidden={section !== "data-policy"}>
               <DataPolicyPanel session={session} />
             </div>

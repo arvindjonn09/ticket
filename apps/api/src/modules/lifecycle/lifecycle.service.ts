@@ -22,10 +22,10 @@ const elapsed = (date: Date, now: Date) => date.getTime() <= now.getTime();
 @Injectable()
 export class TenantLifecycleService implements OnModuleDestroy {
   private readonly owner: PrismaClient;
-  private readonly mail = createPlatformTransport();
+  private readonly mail = createPlatformTransport(() => this.db);
 
   constructor(private readonly db: Database) {
-    if (!process.env.MIGRATION_DATABASE_URL || !process.env.SMTP_HOST || !process.env.SMTP_FROM)
+    if (!process.env.MIGRATION_DATABASE_URL)
       throw new Error("Tenant lifecycle worker configuration is incomplete");
     this.owner = new PrismaClient({ datasourceUrl: process.env.MIGRATION_DATABASE_URL, log: [] });
   }

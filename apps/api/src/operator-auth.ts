@@ -264,11 +264,12 @@ export class OperatorAuthService {
       uri: `otpauth://totp/${encodeURIComponent(`Astrama Operator:${auth.email}`)}?secret=${secret}&issuer=${encodeURIComponent("Astrama Operator")}&algorithm=SHA1&digits=6&period=30`,
     };
   }
-  async verifyMfa(auth: OperatorSessionContext, body: unknown) {
+  async verifyMfa(auth: OperatorSessionContext, body: unknown, stepUp = false) {
     const input = mfaVerifySchema.parse(body);
     const result = await this.db.$transaction(async (tx) => {
       const op = await this.lockOperator(tx, auth);
       if (!op || !op.active) return "invalid";
+      if (stepUp && (!op.mfa_enrolled || op.role !== "owner")) return "invalid";
       if (
         !op.mfa_enrolled &&
         (op.mfa_pending_session_id !== auth.sessionId ||
@@ -292,9 +293,14 @@ export class OperatorAuthService {
       }
       await tx.$executeRaw`UPDATE operators SET mfa_last_step=${step},mfa_failures=0,mfa_locked_until=NULL,
         mfa_enrolled=true,mfa_pending_session_id=NULL,mfa_pending_expires_at=NULL WHERE id=${op.id}::uuid`;
-      await tx.$executeRaw`UPDATE operator_sessions SET mfa_verified=true,
+      if (!stepUp)
+        await tx.$executeRaw`UPDATE operator_sessions SET mfa_verified=true,
         expires_at=created_at+interval '12 hours' WHERE id=${auth.sessionId}::uuid`;
-      await this.audit(tx, op.id, op.mfa_enrolled ? "auth.mfa_verified" : "auth.mfa_enrolled");
+      await this.audit(
+        tx,
+        op.id,
+        stepUp ? "auth.mfa_step_up" : op.mfa_enrolled ? "auth.mfa_verified" : "auth.mfa_enrolled",
+      );
       return true;
     });
     if (typeof result === "string")

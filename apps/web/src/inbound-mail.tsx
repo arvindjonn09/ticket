@@ -4,8 +4,16 @@ import type { InboundMailView } from "@astrama/contracts";
 import { api } from "./api";
 import type { SessionView } from "./types";
 import { ForwardingGuide } from "./forwarding-guide";
+import { useTranslation } from "react-i18next";
 
-export function InboundMailPanel({ session }: { session: SessionView }) {
+export function InboundMailPanel({
+  session,
+  advancedCollapsed = false,
+}: {
+  session: SessionView;
+  advancedCollapsed?: boolean;
+}) {
+  const { t } = useTranslation("forwardingGuide");
   const cache = useQueryClient();
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
@@ -62,155 +70,158 @@ export function InboundMailPanel({ session }: { session: SessionView }) {
   return (
     <>
       <ForwardingGuide config={config} csrfToken={session.csrfToken} />
-      <section className="form-panel" aria-label="Inbound email">
-        <h2>Inbound email</h2>
-        <p className="muted">
-          Map reserved tenant addresses to staffed support queues. The webhook secret is shown once
-          when rotated.
-        </p>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            saveSettings.mutate({
-              revision: config.revision,
-              triageDepartmentId: form.get("triageDepartmentId"),
-              triageCategoryId: form.get("triageCategoryId"),
-              allowUnverifiedSenders: form.has("allowUnverifiedSenders"),
-            });
-          }}
-        >
-          <label>
-            Triage queue
-            <select
-              name="triageDepartmentId"
-              required
-              defaultValue={config.triageDepartmentId ?? ""}
-            >
-              {config.departments.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            General category
-            <select name="triageCategoryId" required defaultValue={config.triageCategoryId ?? ""}>
-              {config.categories.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              name="allowUnverifiedSenders"
-              defaultChecked={config.allowUnverifiedSenders}
-            />{" "}
-            Allow unverified senders into triage
-          </label>
-          <button className="button primary" disabled={saveSettings.isPending}>
-            Save email settings
-          </button>
-        </form>
-        <button
-          className="button secondary"
-          onClick={() => {
-            setSecret("");
-            rotate.mutate();
-          }}
-          disabled={!config.configured || rotate.isPending}
-        >
-          Rotate webhook secret
-        </button>
-        {secret && (
-          <label>
-            Copy this secret now
-            <input
-              readOnly
-              value={secret}
-              autoComplete="off"
-              onFocus={(event) => event.currentTarget.select()}
-            />
-          </label>
-        )}
-        <h3>Department addresses</h3>
-        {config.addresses.map((address) => (
-          <div key={address.id} className="config-record">
-            {address.address} →{" "}
-            {config.departments.find((item) => item.id === address.departmentId)?.name ??
-              "Unknown queue"}{" "}
-            {address.isGeneral ? "(general)" : ""} {address.active ? "" : "(inactive)"}
-            {address.active && (
-              <button
-                className="text-button"
-                onClick={() => saveAddress.mutate({ ...address, active: false })}
-              >
-                Deactivate
-              </button>
-            )}
-          </div>
-        ))}
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            saveAddress.mutate({
-              address: form.get("address"),
-              departmentId: form.get("departmentId"),
-              categoryId: form.get("categoryId"),
-              isGeneral: form.has("isGeneral"),
-              active: true,
-            });
-            event.currentTarget.reset();
-          }}
-        >
-          <label>
-            Address
-            <input
-              name="address"
-              type="email"
-              required
-              maxLength={254}
-              placeholder="it@example.test"
-            />
-          </label>
-          <label>
-            Department
-            <select name="departmentId" required>
-              {config.departments.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Category
-            <select name="categoryId" required>
-              {config.categories.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="checkbox-label">
-            <input type="checkbox" name="isGeneral" /> General address (routes to triage)
-          </label>
-          <button className="button secondary" disabled={saveAddress.isPending}>
-            Add address
-          </button>
-        </form>
-        {(error || saveSettings.error || rotate.error) && (
-          <p className="error" role="alert">
-            {error || saveSettings.error?.message || rotate.error?.message}
+      <details open={!advancedCollapsed}>
+        <summary style={{ minHeight: 24 }}>{t("advanced")}</summary>
+        <section className="form-panel" aria-label="Inbound email">
+          <h2>Inbound email</h2>
+          <p className="muted">
+            Map reserved tenant addresses to staffed support queues. The webhook secret is shown
+            once when rotated.
           </p>
-        )}
-      </section>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              saveSettings.mutate({
+                revision: config.revision,
+                triageDepartmentId: form.get("triageDepartmentId"),
+                triageCategoryId: form.get("triageCategoryId"),
+                allowUnverifiedSenders: form.has("allowUnverifiedSenders"),
+              });
+            }}
+          >
+            <label>
+              Triage queue
+              <select
+                name="triageDepartmentId"
+                required
+                defaultValue={config.triageDepartmentId ?? ""}
+              >
+                {config.departments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              General category
+              <select name="triageCategoryId" required defaultValue={config.triageCategoryId ?? ""}>
+                {config.categories.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="allowUnverifiedSenders"
+                defaultChecked={config.allowUnverifiedSenders}
+              />{" "}
+              Allow unverified senders into triage
+            </label>
+            <button className="button primary" disabled={saveSettings.isPending}>
+              Save email settings
+            </button>
+          </form>
+          <button
+            className="button secondary"
+            onClick={() => {
+              setSecret("");
+              rotate.mutate();
+            }}
+            disabled={!config.configured || rotate.isPending}
+          >
+            Rotate webhook secret
+          </button>
+          {secret && (
+            <label>
+              Copy this secret now
+              <input
+                readOnly
+                value={secret}
+                autoComplete="off"
+                onFocus={(event) => event.currentTarget.select()}
+              />
+            </label>
+          )}
+          <h3>Department addresses</h3>
+          {config.addresses.map((address) => (
+            <div key={address.id} className="config-record">
+              {address.address} →{" "}
+              {config.departments.find((item) => item.id === address.departmentId)?.name ??
+                "Unknown queue"}{" "}
+              {address.isGeneral ? "(general)" : ""} {address.active ? "" : "(inactive)"}
+              {address.active && (
+                <button
+                  className="text-button"
+                  onClick={() => saveAddress.mutate({ ...address, active: false })}
+                >
+                  Deactivate
+                </button>
+              )}
+            </div>
+          ))}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              saveAddress.mutate({
+                address: form.get("address"),
+                departmentId: form.get("departmentId"),
+                categoryId: form.get("categoryId"),
+                isGeneral: form.has("isGeneral"),
+                active: true,
+              });
+              event.currentTarget.reset();
+            }}
+          >
+            <label>
+              Address
+              <input
+                name="address"
+                type="email"
+                required
+                maxLength={254}
+                placeholder="it@example.test"
+              />
+            </label>
+            <label>
+              Department
+              <select name="departmentId" required>
+                {config.departments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Category
+              <select name="categoryId" required>
+                {config.categories.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="checkbox-label">
+              <input type="checkbox" name="isGeneral" /> General address (routes to triage)
+            </label>
+            <button className="button secondary" disabled={saveAddress.isPending}>
+              Add address
+            </button>
+          </form>
+          {(error || saveSettings.error || rotate.error) && (
+            <p className="error" role="alert">
+              {error || saveSettings.error?.message || rotate.error?.message}
+            </p>
+          )}
+        </section>
+      </details>
     </>
   );
 }

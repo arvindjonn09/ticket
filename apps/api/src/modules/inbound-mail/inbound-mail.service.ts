@@ -447,6 +447,12 @@ export class InboundMailService {
   async acceptSmtp(input: InboundMessageInput) {
     if (!(await this.smtpRecipient(input.recipient)))
       throw new UnauthorizedException("Invalid inbound recipient");
+    const probe = input.subject.match(/^Astrama platform intake check ([a-f0-9]{64})$/)?.[1];
+    if (probe) {
+      const [row] = await this.db.$queryRaw<{ consumed: boolean }[]>`
+        SELECT consume_platform_mail_probe(${senderHash(probe)},${input.recipient.toLowerCase()}) AS consumed`;
+      if (row?.consumed) return { accepted: true };
+    }
     return this.acceptMessage(input);
   }
 

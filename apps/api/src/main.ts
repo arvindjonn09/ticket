@@ -38,6 +38,10 @@ import {
   TenantOperatorAccessController,
 } from "./operator-access.js";
 import { OperatorConsoleController, OperatorConsoleService } from "./operator-console.js";
+import {
+  PlatformMailSettingsController,
+  PlatformMailSettingsService,
+} from "./platform-mail-settings.js";
 import { TicketsService } from "./modules/tickets/tickets.service.js";
 import { AdminService } from "./modules/organisation/admin.service.js";
 import {
@@ -262,6 +266,7 @@ class AdminController {
   controllers: [
     OperatorAuthController,
     OperatorConsoleController,
+    PlatformMailSettingsController,
     OperatorTicketsController,
     TenantOperatorAccessController,
     PublicController,
@@ -286,6 +291,7 @@ class AdminController {
   providers: [
     OperatorAuthService,
     OperatorConsoleService,
+    PlatformMailSettingsService,
     OperatorGuard,
     OperatorAccessService,
     Database,

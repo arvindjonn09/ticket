@@ -16,7 +16,7 @@ import {
 import { hash, argon2id } from "argon2";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { createPlatformTransport, platformMailDomain } from "../../platform-mail.js";
+import { createPlatformTransport } from "../../platform-mail.js";
 import { createChallenge, verifySolution } from "altcha-lib/v1";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -59,7 +59,7 @@ function isUniqueViolation(error: unknown) {
 
 @Injectable()
 export class SaasService {
-  private readonly mail = createPlatformTransport();
+  private readonly mail = createPlatformTransport(() => this.db);
 
   constructor(private readonly db: Database) {}
 
@@ -405,8 +405,6 @@ export class SaasService {
       FROM picked WHERE m.id=picked.id RETURNING m.id,m.recipient,m.subject,m.encrypted_url,m.identity`;
     for (const item of rows) {
       try {
-        if (!process.env.SMTP_HOST || !process.env.SMTP_FROM)
-          throw new Error("mail configuration missing");
         const url = decryptSecret(item.encrypted_url, item.identity);
         const isOrganisationLinks = item.identity.startsWith("organisation-links:");
         await this.mail.sendMail({
@@ -419,8 +417,10 @@ export class SaasService {
               : `Use this single-use link to continue:\n${url}\n\nIf you did not request this email, you can ignore it.`,
             { hideBranding: false, brandingUrl: brandingUrl(""), locale: "en" },
           ),
-          messageId: `<public-${item.id}@${platformMailDomain()}>`,
+          messageId: `<public-${item.id}@platform.invalid>`,
         });
+        await this.db
+          .$executeRaw`INSERT INTO tenant_mail_deliveries(tenant_id,kind,status) VALUES(NULL,'public','sent')`;
         await this.db.publicMailOutbox.update({
           where: { id: item.id },
           data: {
@@ -431,6 +431,8 @@ export class SaasService {
           },
         });
       } catch {
+        await this.db
+          .$executeRaw`INSERT INTO tenant_mail_deliveries(tenant_id,kind,status,last_error) VALUES(NULL,'public','failed','SMTP delivery failed')`;
         await this.db.publicMailOutbox.update({
           where: { id: item.id },
           data: {

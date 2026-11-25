@@ -1,0 +1,84 @@
+# Overlay: docker compose -f compose.hosted-local.yaml -f compose.mail-oss.yaml --profile mail-oss ...
+name: astrama-mail-oss
+x-mail-oss-env: &mail-oss-env
+  PUBLIC_SITE_ORIGIN: https://astrama.localhost:${MAIL_OSS_HTTPS_PORT:-18443}
+  OPERATOR_ORIGIN: https://ops.astrama.localhost:${MAIL_OSS_HTTPS_PORT:-18443}
+  NODE_EXTRA_CA_CERTS: /mail-oss-ca/ca.crt
+  PLATFORM_MAIL_DOMAIN: ${MAIL_OSS_DOMAIN:-astrama.localhost}
+  INBOUND_MAIL_DOMAIN: in.${MAIL_OSS_DOMAIN:-astrama.localhost}
+services:
+  mox-init:
+    profiles: ["mail-oss"]
+    build: { context: ., dockerfile: infra/mail-oss/Dockerfile }
+    image: astrama-mail-oss-init:local
+    environment:
+      MAIL_OSS_DOMAIN: ${MAIL_OSS_DOMAIN:-astrama.localhost}
+    volumes:
+      - mail-oss-private:/mox
+      - mail-oss-ca:/mail-oss-ca
+    network_mode: none
+    restart: "no"
+  mox:
+    profiles: ["mail-oss"]
+    image: r.xmox.nl/mox:v0.0.17@sha256:8889e7b48fdd5b0b07b51dd11a6d06536334ec442652f2ffb1e1df3a9d45074e
+    command: ["mox", "-config", "/mox/mox.conf", "serve"]
+    volumes: ["mail-oss-private:/mox"]
+    networks: [mail-oss]
+    depends_on:
+      mox-init: { condition: service_completed_successfully }
+      mail: { condition: service_started }
+      mail-intake: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "printf 'QUIT\\r\\n' | nc -w 2 127.0.0.1 587 | grep -q '^220 '"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+  mail-intake:
+    image: astrama-mail-oss-api:local
+    profiles: !override ["mail-oss", "mail-intake"]
+    ports: !override []
+    networks: [default, mail-oss]
+    environment:
+      INBOUND_MAIL_DOMAIN: in.${MAIL_OSS_DOMAIN:-astrama.localhost}
+  mail:
+    networks: [default, mail-oss]
+    ports: !override ["127.0.0.1:${MAIL_OSS_MAILPIT_PORT:-14313}:8025"]
+  web:
+    image: astrama-mail-oss-web:local
+    ports: !override ["127.0.0.1:${MAIL_OSS_HTTPS_PORT:-18443}:443"]
+  setup:
+    image: astrama-mail-oss-api:local
+    environment:
+      PUBLIC_SITE_ORIGIN: https://astrama.localhost:${MAIL_OSS_HTTPS_PORT:-18443}
+      OPERATOR_ORIGIN: https://ops.astrama.localhost:${MAIL_OSS_HTTPS_PORT:-18443}
+  api:
+    image: astrama-mail-oss-api:local
+    networks: [default, mail-oss]
+    environment: *mail-oss-env
+    volumes: ["mail-oss-ca:/mail-oss-ca:ro"]
+    depends_on:
+      mox-init: { condition: service_completed_successfully }
+  worker:
+    image: astrama-mail-oss-api:local
+    networks: [default, mail-oss]
+    environment: *mail-oss-env
+    volumes: ["mail-oss-ca:/mail-oss-ca:ro"]
+    depends_on:
+      mox-init: { condition: service_completed_successfully }
+  lifecycle:
+    image: astrama-mail-oss-api:local
+    networks: [default, mail-oss]
+    environment: *mail-oss-env
+    volumes:
+      - mail-oss-ca:/mail-oss-ca:ro
+    depends_on:
+      mox-init: { condition: service_completed_successfully }
+  storage-setup:
+    image: astrama-mail-oss-api:local
+volumes:
+  mail-oss-private:
+  mail-oss-ca:
+networks:
+  mail-oss:
+    internal: true

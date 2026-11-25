@@ -31,6 +31,7 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       await isolated.$executeRaw`CREATE TABLE operators(id uuid PRIMARY KEY,encrypted_mfa_secret text)`;
       await isolated.$executeRaw`CREATE TABLE public_mail_outbox(id uuid PRIMARY KEY,identity text,encrypted_url text)`;
       await isolated.$executeRaw`CREATE TABLE inbound_mail_settings(tenant_id uuid PRIMARY KEY,encrypted_webhook_secret text)`;
+      await isolated.$executeRaw`CREATE TABLE platform_mail_profiles(id uuid PRIMARY KEY,encrypted_password text)`;
       const { encryptSecret, encryptionKey } = await import("../dist/mfa.js");
       mfaCipher = encryptSecret(
         "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
@@ -54,6 +55,7 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       await isolated.$executeRaw`INSERT INTO operators VALUES(${user}::uuid,${encryptSecret("operator-totp-fixture", `operator:${user}`, encryptionKey(oldKey))})`;
       await isolated.$executeRaw`INSERT INTO public_mail_outbox VALUES(${request}::uuid,${"signup-fixture"},${encryptSecret("public-verification-fixture", "signup-fixture", encryptionKey(oldKey))})`;
       await isolated.$executeRaw`INSERT INTO inbound_mail_settings VALUES(${tenant}::uuid,${encryptSecret("inbound-secret-fixture", `inbound-mail:${tenant}`, encryptionKey(oldKey))})`;
+      await isolated.$executeRaw`INSERT INTO platform_mail_profiles VALUES(${request}::uuid,${encryptSecret("smtp-password-fixture", "platform-smtp", encryptionKey(oldKey))})`;
     });
     afterAll(async () => {
       await isolated?.$disconnect();
@@ -77,6 +79,7 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
         operatorMfaSecrets: 1,
         publicMailLinks: 1,
         inboundWebhookSecrets: 1,
+        platformSmtpProfiles: 1,
       });
       const [row] = await isolated.$queryRaw<
         { mfa_secret: string }[]
@@ -160,6 +163,15 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
           encryptionKey(newKey),
         ),
       ).toBe("inbound-secret-fixture");
+      const [profile] = await isolated.$queryRaw<
+        { encrypted_password: string }[]
+      >`SELECT encrypted_password FROM platform_mail_profiles`;
+      expect(
+        decryptSecret(profile!.encrypted_password, "platform-smtp", encryptionKey(newKey)),
+      ).toBe("smtp-password-fixture");
+      expect(() =>
+        decryptSecret(profile!.encrypted_password, "platform-smtp", encryptionKey(oldKey)),
+      ).toThrow();
     });
   },
 );

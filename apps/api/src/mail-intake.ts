@@ -21,9 +21,29 @@ const context = await NestFactory.createApplicationContext(MailIntakeModule, { l
 const db = context.get(Database);
 await db.assertRuntimeRole();
 const inbound = context.get(InboundMailService);
+let rejected = 0;
+let rejectionFlush: Promise<unknown> | undefined;
+function flushRejections(): Promise<unknown> {
+  if (rejectionFlush || !rejected) return rejectionFlush ?? Promise.resolve();
+  const count = rejected;
+  rejected = 0;
+  rejectionFlush = db.$executeRaw`SELECT record_platform_mail_rejection(${count}::bigint)`
+    .catch(() => {
+      rejected += count;
+    })
+    .finally(() => {
+      rejectionFlush = undefined;
+    });
+  return rejectionFlush;
+}
+// Batch anonymous refusal counts so abusive SMTP commands do not each write a DB row.
+const rejectionTimer = setInterval(() => void flushRejections(), 5000).unref();
 const server = createMailIntakeServer({
   resolveRecipient: (recipient) => inbound.smtpRecipient(recipient),
   accept: (message) => inbound.acceptSmtp(message),
+  onRejected: () => {
+    rejected++;
+  },
   maxMessageBytes: process.env.MAIL_INTAKE_MAX_BYTES
     ? Number(process.env.MAIL_INTAKE_MAX_BYTES)
     : undefined,
@@ -45,6 +65,7 @@ const server = createMailIntakeServer({
   ...(keyFile && certFile ? { key: await readFile(keyFile), cert: await readFile(certFile) } : {}),
 });
 server.on("error", () => {
+  clearInterval(rejectionTimer);
   console.error(JSON.stringify({ event: "mail.intake.error" }));
   void context.close().finally(() => process.exit(1));
 });
@@ -56,5 +77,14 @@ for (const signal of ["SIGTERM", "SIGINT"])
   process.on(signal, () => {
     if (stopping) return;
     stopping = true;
-    server.close(() => void context.close().then(() => process.exit(0)));
+    clearInterval(rejectionTimer);
+    server.close(
+      () =>
+        void (async () => {
+          await rejectionFlush;
+          await flushRejections();
+          await context.close();
+          process.exit(0);
+        })(),
+    );
   });

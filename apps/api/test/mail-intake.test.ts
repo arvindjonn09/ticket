@@ -69,6 +69,16 @@ async function listen(overrides: Partial<MailIntakeOptions> = {}) {
 }
 
 describe("EM-01 real SMTP intake", () => {
+  it("reports refusals without letting a metrics failure alter the SMTP response", async () => {
+    const onRejected = vi.fn(() => {
+      throw new Error("Private metrics failure");
+    });
+    const { send } = await listen({ onRejected });
+    await expect(send(rawMessage(), "unknown@example.com")).rejects.toMatchObject({
+      responseCode: 550,
+    });
+    expect(onRejected).toHaveBeenCalledOnce();
+  });
   it("refuses an unknown envelope recipient with 550 during RCPT, without relaying", async () => {
     const { send, accept } = await listen();
     await expect(send(rawMessage(), "unknown@example.com")).rejects.toMatchObject({

@@ -392,6 +392,33 @@ model InboundMailAddress {
   @@map("inbound_mail_addresses")
 }
 
+model PlatformMailProfile {
+  id                String @id @db.Uuid
+  revision          Int @unique @default(autoincrement())
+  settings          Json
+  encryptedPassword String @map("encrypted_password")
+  testedAt          DateTime? @map("tested_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  activeSettings    PlatformMailSettings[] @relation("ActivePlatformMail")
+  previousSettings  PlatformMailSettings[] @relation("PreviousPlatformMail")
+  @@map("platform_mail_profiles")
+}
+
+model PlatformMailSettings {
+  id                Boolean @id @default(true)
+  revision          Int @default(0)
+  activeProfileId   String? @map("active_profile_id") @db.Uuid
+  previousProfileId String? @map("previous_profile_id") @db.Uuid
+  probeHash         String? @map("probe_hash")
+  probeAddress      String? @map("probe_address")
+  probeStartedAt    DateTime? @map("probe_started_at") @db.Timestamptz(6)
+  probeReceivedAt   DateTime? @map("probe_received_at") @db.Timestamptz(6)
+  intakeRejected    BigInt @default(0) @map("intake_rejected")
+  activeProfile     PlatformMailProfile? @relation("ActivePlatformMail",fields:[activeProfileId],references:[id])
+  previousProfile   PlatformMailProfile? @relation("PreviousPlatformMail",fields:[previousProfileId],references:[id])
+  @@map("platform_mail_settings")
+}
+
 model InboundMessage {
   id             String    @id @default(uuid()) @db.Uuid
   tenantId       String    @map("tenant_id") @db.Uuid

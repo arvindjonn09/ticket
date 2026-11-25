@@ -46,7 +46,8 @@ nav,
 nav {
   margin-bottom: 1.5rem;
 }
-nav button[aria-pressed="true"] {
+nav button[aria-pressed="true"],
+.toolbar button[aria-pressed="true"] {
   background: #132f49;
   color: white;
 }
@@ -137,6 +138,17 @@ textarea {
   padding: 1.25rem;
   margin: 1rem 0;
   overflow-wrap: anywhere;
+}
+.mail-confirmation {
+  width: 600px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  color: #182c40;
+}
+summary {
+  min-height: 24px;
+  cursor: pointer;
 }
 .auth {
   max-width: 480px;

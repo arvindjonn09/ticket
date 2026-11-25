@@ -80,7 +80,7 @@ jobs:
           done
           docker compose logs site
           exit 1
-      - run: pnpm --filter @astrama/domain --filter @astrama/web test
+      - run: pnpm --filter @astrama/domain --filter @astrama/web --filter @astrama/operator test
       - name: Verify scanning, object storage and mail delivery
         run: |
           docker compose up -d --wait scanner
@@ -92,6 +92,7 @@ jobs:
             -e S3_ACCESS_KEY=astrama-local -e S3_SECRET_KEY=astrama-local-storage-password \
             -e CLAMAV_HOST=scanner \
             -e RUN_QUEUE_TESTS=true \
+            -e RUN_PLATFORM_MAIL_TESTS=true \
             setup pnpm --filter @astrama/api test
       - name: Build production runtime
         run: docker build -f infra/Dockerfile --target api-production -t astrama-api:ci .

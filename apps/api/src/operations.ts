@@ -1,4 +1,13 @@
-import { Controller, ForbiddenException, Get, Req, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Controller,
+  ForbiddenException,
+  Get,
+  HttpException,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { createConnection } from "node:net";
 import { canConfigureOrganisation } from "@astrama/domain";
@@ -6,6 +15,9 @@ import type { EmailHealthView } from "@astrama/contracts";
 import { SessionGuard, type AuthRequest } from "./modules/auth/auth.service.js";
 import { Database } from "./database.js";
 import { TicketsService } from "./modules/tickets/tickets.service.js";
+import { createPlatformTransport, sendTenantMail } from "./platform-mail.js";
+import { brandedMailText } from "./branding.js";
+import { z } from "zod";
 
 export async function operationalHealth(db: Database) {
   const checks: Record<string, boolean> = {
@@ -102,10 +114,37 @@ export function productionHostChecks(diskPercentText: string, certificateDaysTex
 @Controller("admin/operations")
 @UseGuards(SessionGuard)
 export class OperationsController {
+  private readonly mail = createPlatformTransport(() => this.db);
   constructor(
     private readonly db: Database,
     private readonly tickets: TicketsService,
   ) {}
+  @Post("email/test") async sendTest(@Req() req: AuthRequest) {
+    z.object({}).strict().parse(req.body);
+    const error = await this.tickets.scoped(req.auth, async (tx, actor) => {
+      if (!canConfigureOrganisation({ ...actor, mfaVerified: req.auth.view.mfaVerified }))
+        throw new ForbiddenException("MFA-verified administrator required");
+      const admin = await tx.user.findUniqueOrThrow({ where: { id: actor.id } });
+      try {
+        await sendTenantMail(this.mail, tx, actor.tenantId, {
+          to: admin.email,
+          subject: "Astrama outgoing email test",
+          text: await brandedMailText(
+            tx,
+            actor.tenantId,
+            "Your organisation's outgoing email is working.",
+          ),
+        });
+        return null;
+      } catch (failure) {
+        return failure instanceof HttpException
+          ? failure
+          : new BadRequestException("SMTP test failed. Contact your platform operator.");
+      }
+    });
+    if (error) throw error;
+    return { sent: true };
+  }
   @Get("email") email(@Req() req: AuthRequest): Promise<EmailHealthView> {
     return this.tickets.scoped(req.auth, async (tx, actor) => {
       if (!canConfigureOrganisation({ ...actor, mfaVerified: req.auth.view.mfaVerified }))

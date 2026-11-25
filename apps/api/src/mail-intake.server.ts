@@ -21,13 +21,18 @@ export interface MailIntakeOptions {
   messagesPerSenderPerMinute?: number;
   maxTrackedKeys?: number;
   trustedTestOptions?: MailIntakeTestOptions;
-}
-
-function smtpError(responseCode: number, message: string) {
-  return Object.assign(new Error(message), { responseCode });
+  onRejected?: () => void;
 }
 
 export function createMailIntakeServer(options: MailIntakeOptions): SMTPServer {
+  function smtpError(responseCode: number, message: string) {
+    try {
+      options.onRejected?.();
+    } catch {
+      /* Metrics never alter SMTP handling. */
+    }
+    return Object.assign(new Error(message), { responseCode });
+  }
   const maxMessageBytes = options.maxMessageBytes ?? 8 * 1024 * 1024;
   const maxClients = options.maxClients ?? 100;
   const maxTrackedKeys = options.maxTrackedKeys ?? 10_000;

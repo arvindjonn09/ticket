@@ -30,7 +30,7 @@ const provisioningQueue = "tenant-provisioning";
 @Injectable()
 export class NotificationWorker {
   private readonly boss: PgBoss;
-  private readonly mail = createPlatformTransport();
+  private readonly mail = createPlatformTransport(() => this.db);
   private timer?: NodeJS.Timeout;
   private dispatching = false;
   private lastAutomationAt = 0;
@@ -48,8 +48,6 @@ export class NotificationWorker {
   ) {
     if (
       !process.env.DATABASE_URL ||
-      !process.env.SMTP_HOST ||
-      !process.env.SMTP_FROM ||
       (platformMode() === "single" && !process.env.APP_ORIGIN) ||
       (platformMode() === "hosted" && !process.env.APP_BASE_DOMAIN)
     )

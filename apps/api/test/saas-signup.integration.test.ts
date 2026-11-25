@@ -11,6 +11,49 @@ describe.skipIf(!enabled)("SaaS signup database functions", () => {
 
   afterAll(async () => owner.$disconnect());
 
+  it("returns organisation slugs only for a matching active member email", async () => {
+    await owner
+      .$transaction(async (tx) => {
+        const fixture = randomUUID(),
+          slug = `lookup-${fixture.slice(0, 8)}`;
+        const tenant = await tx.tenant.create({
+          data: {
+            slug,
+            name: "Lookup fixture",
+            brandName: "Lookup fixture",
+            status: "trial",
+            trialEndsAt: new Date(Date.now() + 15 * 24 * 3600000),
+          },
+        });
+        await tx.user.create({
+          data: {
+            tenantId: tenant.id,
+            name: "Lookup admin",
+            email: `${fixture}@example.invalid`,
+            passwordHash: "not-a-login-hash",
+            role: "admin",
+            active: true,
+          },
+        });
+        await tx.$executeRawUnsafe("SET LOCAL ROLE astrama_app");
+        expect(
+          await tx.$queryRaw<
+            { slug: string }[]
+          >`SELECT * FROM public.public_organisation_links(${`${fixture}@example.invalid`})`,
+        ).toEqual([{ slug }]);
+        expect(
+          await tx.$queryRaw<
+            { slug: string }[]
+          >`SELECT * FROM public.public_organisation_links(${"absent@example.invalid"})`,
+        ).toEqual([]);
+        await tx.$executeRawUnsafe("RESET ROLE");
+        throw rollback;
+      })
+      .catch((error) => {
+        if (error !== rollback) throw error;
+      });
+  });
+
   it("serializes concurrent slug reservations so only one request wins", async () => {
     const slug = `race-${randomUUID().slice(0, 8)}`;
     const reservations = await Promise.allSettled(

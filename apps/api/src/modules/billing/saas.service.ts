@@ -43,6 +43,8 @@ const signupSchema = z
     timezone: z.string().trim().min(1).max(100),
     planId: z.string().trim().min(1).max(80).optional(),
     captcha: z.string().min(1).max(12000),
+    termsAccepted: z.literal(true),
+    privacyAccepted: z.literal(true),
   })
   .strict();
 const tokenSchema = z.object({ token: z.string().min(32).max(256) }).strict();
@@ -176,6 +178,11 @@ export class SaasService {
           ) AS id`;
         const id = created?.id;
         if (!id) throw new Error("Signup request was not recorded");
+        const acceptedAt = new Date();
+        await tx.signupRequest.update({
+          where: { id },
+          data: { termsAcceptedAt: acceptedAt, privacyAcceptedAt: acceptedAt },
+        });
         const verificationUrl = `${this.publicSiteOrigin()}/signup/verify?token=${encodeURIComponent(token)}`,
           identity = `signup-verification:${id}`;
         await tx.publicMailOutbox.create({
@@ -246,6 +253,42 @@ export class SaasService {
     };
   }
 
+  async findOrganisation(body: unknown, ip: string) {
+    if (platformMode() !== "hosted") throw new HttpException("Signup is unavailable", 404);
+    const input = z
+      .object({
+        email: z
+          .string()
+          .trim()
+          .email()
+          .max(254)
+          .transform((value) => value.toLowerCase()),
+        captcha: z.string().min(1).max(12000),
+      })
+      .strict()
+      .parse(body);
+    await this.limitSignup(ip, input.email);
+    await this.verifyCaptcha(input.captcha);
+    const rows = await this.db.$queryRaw<{ slug: string }[]>`
+      SELECT slug FROM public.public_organisation_links(${input.email})`;
+    if (rows.length) {
+      const links = rows.map(({ slug }) => tenantOrigin(slug)).join("\n");
+      const identity = `organisation-links:${randomUUID()}`;
+      await this.db.publicMailOutbox.create({
+        data: {
+          recipient: input.email,
+          subject: "Your Astrama organisation links",
+          encryptedUrl: encryptSecret(links, identity),
+          identity,
+        },
+      });
+    }
+    return {
+      accepted: true,
+      message: "If an active organisation matches, its sign-in link will be sent by email.",
+    };
+  }
+
   async verifySignup(body: unknown) {
     const { token } = tokenSchema.parse(body),
       verificationHash = createHash("sha256").update(token).digest("hex");
@@ -271,8 +314,8 @@ export class SaasService {
     };
   }
 
-  async enqueueProvisioning(enqueue: (signupId: string, attempt: number) => Promise<unknown>) {
-    const jobs = await this.db.$queryRaw<{ id: string; signup_id: string; attempts: number }[]>`
+  async enqueueProvisioning(enqueue: (signupId: string) => Promise<unknown>) {
+    const jobs = await this.db.$queryRaw<{ id: string; signup_id: string }[]>`
       WITH picked AS (
         SELECT id FROM public.signup_provision_jobs
         WHERE (status='queued' OR status IN ('enqueued','processing')) AND next_attempt<=now()
@@ -280,10 +323,10 @@ export class SaasService {
       )
       UPDATE public.signup_provision_jobs j SET status='enqueued',attempts=attempts+1,
         next_attempt=now()+interval '5 minutes'
-      FROM picked WHERE j.id=picked.id RETURNING j.id,j.signup_id,j.attempts`;
+      FROM picked WHERE j.id=picked.id RETURNING j.id,j.signup_id`;
     for (const job of jobs) {
       try {
-        await enqueue(job.signup_id, job.attempts);
+        await enqueue(job.signup_id);
       } catch (error) {
         await this.db.signupProvisionJob.updateMany({
           where: { id: job.id, status: "enqueued" },
@@ -323,7 +366,7 @@ export class SaasService {
           SELECT * FROM public.provision_verified_signup(
             ${signup.id}::uuid,${tenantId}::uuid,${adminId}::uuid,${passwordHash},${invitationHash},
             ${encryptedInvitation},${invitationExpires}::timestamptz,15,
-            ${Number(process.env.DEFAULT_TRIAL_SEAT_LIMIT ?? 25)},${JSON.stringify(template)}::jsonb
+            ${Number(process.env.DEFAULT_TRIAL_SEAT_LIMIT ?? 25)}::integer,${JSON.stringify(template)}::jsonb
           )`;
       }
       await this.db.signupProvisionJob.update({
@@ -360,14 +403,14 @@ export class SaasService {
         if (!process.env.SMTP_HOST || !process.env.SMTP_FROM)
           throw new Error("mail configuration missing");
         const url = decryptSecret(item.encrypted_url, item.identity);
+        const isOrganisationLinks = item.identity.startsWith("organisation-links:");
         await this.mail.sendMail({
           from: process.env.SMTP_FROM,
           to: item.recipient,
           subject: item.subject,
-          text: `Use this single-use link to continue:
-${url}
-
-If you did not request this email, you can ignore it.`,
+          text: isOrganisationLinks
+            ? `Your Astrama organisation links are below. Keep this email private:\n\n${url}\n\nIf you did not request this email, you can ignore it.`
+            : `Use this single-use link to continue:\n${url}\n\nIf you did not request this email, you can ignore it.`,
           messageId: `<public-${item.id}@${new URL(this.publicSiteOrigin()).hostname}>`,
         });
         await this.db.publicMailOutbox.update({
@@ -536,6 +579,12 @@ export class SignupController {
   }
   @Post("signup/resend-verification") resend(@Body() body: unknown, @Req() req: FastifyRequest) {
     return this.saas.resendVerification(body, req.ip);
+  }
+  @Post("signup/find-organisation") findOrganisation(
+    @Body() body: unknown,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.saas.findOrganisation(body, req.ip);
   }
   @Post("billing/webhook") webhook(
     @Req() req: FastifyRequest & { rawBody?: Buffer },

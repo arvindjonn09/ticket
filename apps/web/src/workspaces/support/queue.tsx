@@ -10,7 +10,9 @@ export function TicketList() {
   const { t } = useTranslation();
   const session = useSession();
   const [params, setParams] = useSearchParams();
-  const scope = params.get("scope") === "mine" || session.user.role === "employee" ? "mine" : "all";
+  const isStaff =
+    ["agent", "admin"].includes(session.user.role) && session.user.departmentIds.length > 0;
+  const scope = params.get("scope") === "mine" || !isStaff ? "mine" : "all";
   const search = params.get("search") || "";
   const state = params.get("state") || "";
   const priority = params.get("priority") || "";
@@ -64,7 +66,7 @@ export function TicketList() {
         <div>
           <div className="eyebrow">{t("serviceDesk")}</div>
           <h1>{t(scope === "mine" ? "myTickets" : "listTitle")}</h1>
-          <p>{t(session.user.role === "agent" ? "listIntroAgent" : "listIntroEmployee")}</p>
+          <p>{t(isStaff ? "listIntroAgent" : "listIntroEmployee")}</p>
         </div>
         <div className="heading-actions">
           <Link className="button secondary" to="/requests/new">

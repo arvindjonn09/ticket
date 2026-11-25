@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { createTransport } from "nodemailer";
-import type { Database } from "../../database.js";
+import { Database } from "../../database.js";
 import { lockConfigurationExclusive } from "../../database.js";
 import { tenantOrigin } from "../../platform.js";
 import { deleteExpiredTenant } from "../../operator-data.js";

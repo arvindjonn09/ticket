@@ -38,16 +38,22 @@ describe("SaaS signup", () => {
           { id: "a3ec06c0-034e-4de4-bc26-708f26bb33ab", slug: "acme-service-desk" },
         ]),
       publicMailOutbox: { create: vi.fn().mockResolvedValue({}) },
+      signupRequest: { update: vi.fn().mockResolvedValue({}) },
       signupProvisionJob: { upsert: vi.fn().mockResolvedValue({}) },
     };
     const db = {
       $queryRaw: vi.fn().mockResolvedValue([{ attempts: 1 }]),
       $transaction: vi.fn((callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx)),
       billingPlan: { findFirst: vi.fn().mockResolvedValue(null) },
+      publicMailOutbox: { create: vi.fn().mockResolvedValue({}) },
     } as unknown as Database;
     return {
       service: new SaasService(db),
-      db: db as unknown as { $transaction: ReturnType<typeof vi.fn> },
+      db: db as unknown as {
+        $transaction: ReturnType<typeof vi.fn>;
+        $queryRaw: ReturnType<typeof vi.fn>;
+        publicMailOutbox: { create: ReturnType<typeof vi.fn> };
+      },
       tx,
       body: {
         slug: "acme-service-desk",
@@ -56,6 +62,8 @@ describe("SaaS signup", () => {
         adminEmail: "Admin@acme.example",
         timezone: "Australia/Sydney",
         captcha,
+        termsAccepted: true,
+        privacyAccepted: true,
       },
     };
   }
@@ -78,6 +86,51 @@ describe("SaaS signup", () => {
     const url = decryptSecret(mail.data.encryptedUrl, mail.data.identity);
     expect(mail.data.recipient).toBe("admin@acme.example");
     expect(url).toMatch(/^https:\/\/astrama\.test\/signup\/verify\?token=/);
+    expect(tx.signupRequest.update).toHaveBeenCalledWith({
+      where: { id: "a3ec06c0-034e-4de4-bc26-708f26bb33ab" },
+      data: expect.objectContaining({
+        termsAcceptedAt: expect.any(Date),
+        privacyAcceptedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it("returns the same public response without disclosing an organisation match", async () => {
+    const { service, db } = setup();
+    db.$queryRaw
+      .mockResolvedValueOnce([{ attempts: 1 }])
+      .mockResolvedValueOnce([{ attempts: 1 }])
+      .mockResolvedValueOnce([]);
+    await expect(
+      service.findOrganisation(
+        { email: "person@example.test", captcha: "test-valid" },
+        "192.0.2.4",
+      ),
+    ).resolves.toEqual({
+      accepted: true,
+      message: "If an active organisation matches, its sign-in link will be sent by email.",
+    });
+    expect(db.publicMailOutbox.create).not.toHaveBeenCalled();
+  });
+
+  it("emails only matching organisation links through the encrypted public outbox", async () => {
+    const { service, db } = setup();
+    db.$queryRaw
+      .mockResolvedValueOnce([{ attempts: 1 }])
+      .mockResolvedValueOnce([{ attempts: 1 }])
+      .mockResolvedValueOnce([{ slug: "acme-service-desk" }]);
+    await service.findOrganisation(
+      { email: "Person@Example.test", captcha: "test-valid" },
+      "192.0.2.5",
+    );
+    const mail = db.publicMailOutbox.create.mock.calls[0]![0] as {
+      data: { encryptedUrl: string; identity: string; recipient: string; subject: string };
+    };
+    expect(mail.data.recipient).toBe("person@example.test");
+    expect(mail.data.subject).toBe("Your Astrama organisation links");
+    expect(decryptSecret(mail.data.encryptedUrl, mail.data.identity)).toBe(
+      "https://acme-service-desk.astrama.test",
+    );
   });
 
   it("records email verification and its provisioning job in one transaction", async () => {

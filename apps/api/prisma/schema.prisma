@@ -74,6 +74,8 @@ model SignupRequest {
   verificationHash    String    @unique @map("verification_hash")
   verificationExpires DateTime  @map("verification_expires") @db.Timestamptz(6)
   verifiedAt          DateTime? @map("verified_at") @db.Timestamptz(6)
+  termsAcceptedAt     DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  privacyAcceptedAt   DateTime? @map("privacy_accepted_at") @db.Timestamptz(6)
   provisionedTenantId String?   @unique @map("provisioned_tenant_id") @db.Uuid
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 

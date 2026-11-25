@@ -89,8 +89,10 @@ export function IncidentDetail() {
   const ticket = detail.data;
   if (!ticket) return null;
   const isAgent =
-    session.user.role === "agent" && session.user.departmentIds.includes(ticket.departmentId);
-  const canTransfer = session.user.role === "agent" && session.user.departmentIds.length > 0;
+    ["agent", "admin"].includes(session.user.role) &&
+    session.user.departmentIds.includes(ticket.departmentId);
+  const canTransfer =
+    ["agent", "admin"].includes(session.user.role) && session.user.departmentIds.length > 0;
   const isRequester = session.user.id === ticket.callerId;
   const closed = ["Complete", "Cancelled", "Rejected"].includes(ticket.state);
   const canMessage =

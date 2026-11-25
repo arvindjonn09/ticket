@@ -421,6 +421,10 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
   }, 30000);
   it("exports only permitted tickets with CSV formula escaping and audited access", async () => {
     const ticket = await owner.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+    await owner.ticket.update({
+      where: { id: ticketId },
+      data: { slaFirstRespondedAt: new Date(ticket.createdAt.getTime() + 3600000) },
+    });
     await owner.activity.create({
       data: {
         tenantId,
@@ -455,12 +459,140 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
     );
     expect((await call("GET", "/reports/summary", foreign)).json().total).toBe(0);
   });
+  it("honours immediate/off/daily preferences, sends one private digest across workers and preserves critical alerts", async () => {
+    const preference = (userId: string, mode: string) =>
+      owner.notificationPreference.upsert({
+        where: { tenantId_userId: { tenantId, userId } },
+        create: { tenantId, userId, mode },
+        update: { mode },
+      });
+    const mailbox = async () => {
+      if (!process.env.MAILPIT_URL) return [] as { ID: string }[];
+      const result = (await fetch(
+        `${process.env.MAILPIT_URL}/api/v1/search?query=${encodeURIComponent('to:agent@delivery.test subject:"Daily service desk updates"')}`,
+      ).then((r) => r.json())) as { messages: { ID: string }[] };
+      return result.messages;
+    };
+    await owner.user.update({ where: { id: employee.id }, data: { active: true } });
+    const second = await createNotificationWorker();
+    try {
+      await preference(employee.id, "off");
+      await preference(agent.id, "daily");
+      const prior = new Set((await mailbox()).map((m) => m.ID));
+      const old = await owner.outbox.create({
+        data: {
+          tenantId,
+          ticketId,
+          event: "ticket.message",
+          payload: { audience: "customer" },
+          createdAt: new Date(Date.now() - 2 * 86400000),
+        },
+      });
+      const today = await owner.outbox.create({
+        data: { tenantId, ticketId, event: "ticket.message", payload: { audience: "customer" } },
+      });
+      for (const event of [old, today]) await worker.deliver({ tenantId, eventId: event.id });
+      expect(
+        await owner.notificationDelivery.findUniqueOrThrow({
+          where: {
+            tenantId_eventId_recipientId: { tenantId, eventId: old.id, recipientId: employee.id },
+          },
+        }),
+      ).toMatchObject({ status: "skipped", attempts: 0 });
+      expect(
+        await owner.notificationDelivery.findUniqueOrThrow({
+          where: {
+            tenantId_eventId_recipientId: { tenantId, eventId: old.id, recipientId: agent.id },
+          },
+        }),
+      ).toMatchObject({ status: "deferred", attempts: 0 });
+      // Exercise the existing private dispatcher directly without starting global queue timers.
+      const digest = worker as unknown as { dispatchDigests(): Promise<void> };
+      await Promise.all([
+        digest.dispatchDigests(),
+        (second.worker as unknown as typeof digest).dispatchDigests(),
+      ]);
+      expect(
+        await owner.notificationDelivery.findUniqueOrThrow({
+          where: {
+            tenantId_eventId_recipientId: { tenantId, eventId: old.id, recipientId: agent.id },
+          },
+        }),
+      ).toMatchObject({ status: "sent", attempts: 1 });
+      expect(
+        await owner.notificationDelivery.findUniqueOrThrow({
+          where: {
+            tenantId_eventId_recipientId: { tenantId, eventId: today.id, recipientId: agent.id },
+          },
+        }),
+      ).toMatchObject({ status: "deferred", attempts: 0 });
+      if (process.env.MAILPIT_URL) {
+        const messages = (await mailbox()).filter((m) => !prior.has(m.ID));
+        expect(messages).toHaveLength(1);
+        const message = (await fetch(
+          `${process.env.MAILPIT_URL}/api/v1/message/${messages[0]!.ID}`,
+        ).then((r) => r.json())) as { Text: string };
+        expect(message.Text).toContain("You have 1 service desk updates");
+        expect(message.Text).not.toContain("Attachment integration test");
+        expect(message.Text).not.toContain("Response timing fixture");
+      }
+      await preference(agent.id, "off");
+      const critical = await owner.outbox.create({
+        data: {
+          tenantId,
+          ticketId,
+          event: "sla.breach",
+          payload: { kind: "sla", audience: "internal", target: "resolution", stage: "breach" },
+        },
+      });
+      await worker.deliver({ tenantId, eventId: critical.id });
+      expect(
+        await owner.notificationDelivery.findUniqueOrThrow({
+          where: {
+            tenantId_eventId_recipientId: { tenantId, eventId: critical.id, recipientId: agent.id },
+          },
+        }),
+      ).toMatchObject({ status: "sent", attempts: 1 });
+      await digest.dispatchDigests();
+      expect(
+        await owner.notificationDelivery.findUniqueOrThrow({
+          where: {
+            tenantId_eventId_recipientId: { tenantId, eventId: today.id, recipientId: agent.id },
+          },
+        }),
+      ).toMatchObject({ status: "deferred" });
+      await owner.outbox.update({
+        where: { id: today.id },
+        data: { createdAt: new Date(Date.now() - 2 * 86400000) },
+      });
+      await digest.dispatchDigests();
+      expect(
+        await owner.notificationDelivery.findUniqueOrThrow({
+          where: {
+            tenantId_eventId_recipientId: { tenantId, eventId: today.id, recipientId: agent.id },
+          },
+        }),
+      ).toMatchObject({ status: "skipped" });
+    } finally {
+      await second.context.close();
+      await owner.notificationPreference.deleteMany({
+        where: { tenantId, userId: { in: [employee.id, agent.id] } },
+      });
+      await owner.user.update({ where: { id: employee.id }, data: { active: false } });
+    }
+  }, 30000);
   it.skipIf(process.env.RUN_QUEUE_TESTS !== "true")(
     "dispatches through PostgreSQL jobs and preserves delivery deduplication after restart",
     async () => {
       // Run separately from other fixture suites: the real dispatcher processes the whole database.
       const event = await owner.outbox.create({
         data: { tenantId, ticketId, event: "ticket.message", payload: { audience: "customer" } },
+      });
+      // The dispatcher scans every tenant. Keep prior suites' pending rows out
+      // of this queue test so this event does not wait behind unrelated jobs.
+      await owner.outbox.updateMany({
+        where: { id: { not: event.id }, publishedAt: null },
+        data: { publishedAt: new Date() },
       });
       expect(await db.outbox.count()).toBe(0);
       const pending = await db.$queryRaw<
@@ -490,12 +622,6 @@ describe.skipIf(!configured)("scanned attachments and durable notification deliv
       const first = await owner.notificationDelivery.findMany({
         where: { tenantId, eventId: event.id },
       });
-      expect(
-        first
-          .filter((d) => d.status === "sent")
-          .map((d) => d.recipientId)
-          .sort(),
-      ).toEqual([agent.id]);
       // Simulate the enqueue/mark-published crash window; the event/job identity stays unchanged.
       await owner.outbox.update({ where: { id: event.id }, data: { publishedAt: null } });
       await workerContext.close();

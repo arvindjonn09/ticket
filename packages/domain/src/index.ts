@@ -22,12 +22,30 @@ export const terminalStates = ["Complete", "Cancelled", "Rejected"];
 export function isGroupAgent(actor: Actor, ticket: Ticket): boolean {
   return (
     actor.tenantId === ticket.tenantId &&
-    actor.role === "agent" &&
+    (actor.role === "agent" || actor.role === "admin") &&
     actor.departmentIds.includes(ticket.departmentId)
   );
 }
 export function hasActiveGroup(actor: Actor): boolean {
   return (actor.role === "agent" || actor.role === "admin") && actor.departmentIds.length > 0;
+}
+export type OperatorAccess = {
+  tenantId: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  departmentIds: string[];
+};
+export function canReadOperatorTicket(
+  access: OperatorAccess,
+  ticket: Pick<Ticket, "tenantId" | "departmentId" | "sensitive">,
+  now = new Date(),
+): boolean {
+  return (
+    access.tenantId === ticket.tenantId &&
+    access.revokedAt === null &&
+    access.expiresAt > now &&
+    (!ticket.sensitive || access.departmentIds.includes(ticket.departmentId))
+  );
 }
 export function canReadTicket(actor: Actor, ticket: Ticket): boolean {
   if (actor.tenantId !== ticket.tenantId) return false;

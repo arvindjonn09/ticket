@@ -1,0 +1,170 @@
+:root {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: #172334;
+  background: #f7f8fa;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  font-weight: 400;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+a {
+  color: #175cd3;
+  text-underline-offset: 3px;
+}
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #175cd3;
+  outline-offset: 2px;
+}
+header,
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem max(1.25rem, calc((100vw - 1100px) / 2));
+  background: #fff;
+  border-bottom: 1px solid #dfe4ea;
+}
+header nav,
+footer nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+.brand {
+  font-size: 1.25rem;
+  font-weight: 750;
+  color: #172334;
+  text-decoration: none;
+}
+.hero,
+.content {
+  max-width: 740px;
+  margin: 0 auto;
+  padding: clamp(3rem, 9vw, 7rem) 1.25rem;
+}
+.hero {
+  max-width: 900px;
+  text-align: center;
+}
+.eyebrow {
+  color: #475467;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+.hero h1 {
+  font-size: clamp(2.6rem, 8vw, 5.3rem);
+  line-height: 1.03;
+  letter-spacing: -0.055em;
+  margin: 0.6rem 0 1.25rem;
+}
+.hero h1 span {
+  color: #175cd3;
+}
+.lead {
+  max-width: 620px;
+  margin: 0 auto;
+  font-size: 1.2rem;
+  line-height: 1.65;
+  color: #475467;
+}
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.8rem;
+  margin: 2rem 0;
+}
+.button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.7rem 1rem;
+  border: 1px solid #c7d0dc;
+  border-radius: 0.55rem;
+  background: #fff;
+  color: #172334;
+  text-decoration: none;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.button.primary {
+  background: #175cd3;
+  border-color: #175cd3;
+  color: white;
+}
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.quiet,
+.hint {
+  color: #667085;
+  font-size: 0.92rem;
+}
+.content h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  letter-spacing: -0.035em;
+  margin: 0.4rem 0 1.5rem;
+}
+.panel {
+  background: #fff;
+  border: 1px solid #dfe4ea;
+  border-radius: 0.8rem;
+  padding: clamp(1.2rem, 4vw, 2rem);
+  box-shadow: 0 4px 18px #1723340a;
+}
+.panel form {
+  display: grid;
+  gap: 1rem;
+}
+.panel label:not(.check) {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+.panel input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #98a2b3;
+  border-radius: 0.45rem;
+  font: inherit;
+}
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  line-height: 1.5;
+}
+.check input {
+  margin-top: 0.3rem;
+}
+.check a {
+  margin-left: -0.35rem;
+}
+.error {
+  color: #b42318;
+}
+footer {
+  border-top: 1px solid #dfe4ea;
+  border-bottom: 0;
+  color: #475467;
+}
+footer a {
+  color: inherit;
+}

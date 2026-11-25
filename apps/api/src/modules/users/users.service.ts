@@ -16,7 +16,12 @@ import { Prisma, type User } from "@prisma/client";
 import { argon2id, hash, verify } from "argon2";
 import { randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { canConfigureOrganisation, canReadTicket, type Actor } from "@astrama/domain";
+import {
+  canConfigureOrganisation,
+  canReadTicket,
+  hasActiveGroup,
+  type Actor,
+} from "@astrama/domain";
 import { tenantOrigin } from "../../platform.js";
 import {
   createUserSchema,
@@ -49,6 +54,65 @@ import {
 } from "../../database.js";
 import { encryptSecret } from "../../mfa.js";
 import { TicketsService } from "../tickets/tickets.service.js";
+
+export function occupiedSeats(tx: Tx, tenantId: string, excludingUserId?: string) {
+  return tx.user.count({
+    where: {
+      tenantId,
+      role: { not: "system" },
+      ...(excludingUserId ? { id: { not: excludingUserId } } : {}),
+      OR: [
+        { active: true },
+        { active: false, invitationHash: { not: null }, invitationExpiresAt: { gt: new Date() } },
+      ],
+    },
+  });
+}
+export async function assertSeatAvailable(tx: Tx, tenantId: string, excludingUserId?: string) {
+  const tenant = await tx.tenant.findUniqueOrThrow({
+    where: { id: tenantId },
+    select: { seatLimit: true },
+  });
+  const used = await occupiedSeats(tx, tenantId, excludingUserId);
+  if (used >= tenant.seatLimit)
+    throw new ConflictException("Seat limit reached. Upgrade your plan in Billing first.");
+}
+
+/** Shared invitation delivery; callers record their own authenticated actor/audit. */
+export async function queueUserInvitation(tx: Tx, tenantId: string, user: User) {
+  if (!user.active) await assertSeatAvailable(tx, tenantId, user.id);
+  const token = randomBytes(32).toString("base64url"),
+    expiresAt = new Date(Date.now() + 48 * 3600000);
+  const updated = await tx.user.update({
+    where: { id: user.id },
+    data: {
+      invitationHash: tokenHash(token),
+      invitationExpiresAt: expiresAt,
+      invitedAt: new Date(),
+      updatedAt: new Date(),
+      revision: { increment: 1 },
+    },
+  });
+  const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+  const url = `${tenantOrigin(tenant.slug)}/#activate?token=${encodeURIComponent(token)}&organisation=${encodeURIComponent(tenant.slug)}`;
+  await tx.invitationMail.updateMany({
+    where: { tenantId, userId: user.id, status: "pending" },
+    data: { status: "skipped", encryptedUrl: null, lastError: "Invitation superseded" },
+  });
+  await tx.invitationMail.create({
+    data: {
+      tenantId,
+      userId: user.id,
+      invitationHash: tokenHash(token),
+      encryptedUrl: encryptSecret(url, `invitation:${tenantId}:${user.id}`),
+    },
+  });
+  return {
+    user: updated,
+    invitation: { url, expiresAt: expiresAt.toISOString() },
+    emailQueued: true,
+  };
+}
 
 const userView = (user: User): UserProfile => ({
   id: user.id,
@@ -201,29 +265,8 @@ export class UsersService {
     if (!user) throw new NotFoundException("User not found");
     return user;
   }
-  private async requireSeat(tx: Tx, tenantId: string, excludingUserId?: string) {
-    const tenant = await tx.tenant.findUniqueOrThrow({
-      where: { id: tenantId },
-      select: { seatLimit: true },
-    });
-    const where = {
-      tenantId,
-      role: { not: "system" },
-      ...(excludingUserId ? { id: { not: excludingUserId } } : {}),
-    };
-    const [active, invited] = await Promise.all([
-      tx.user.count({ where: { ...where, active: true } }),
-      tx.user.count({
-        where: {
-          ...where,
-          active: false,
-          invitationHash: { not: null },
-          invitationExpiresAt: { gt: new Date() },
-        },
-      }),
-    ]);
-    if (active + invited >= tenant.seatLimit)
-      throw new ConflictException("Seat limit reached. Upgrade your plan in Billing first.");
+  private requireSeat(tx: Tx, tenantId: string, excludingUserId?: string) {
+    return assertSeatAvailable(tx, tenantId, excludingUserId);
   }
   private revision(revision: number, user: User) {
     if (revision !== user.revision)
@@ -271,10 +314,9 @@ export class UsersService {
         { submittedById: actor.id },
         { requestedForId: actor.id },
       ];
-      const visible: Prisma.TicketWhereInput =
-        actor.role === "agent"
-          ? { OR: [...own, { sensitive: false }, { departmentId: { in: actor.departmentIds } }] }
-          : { OR: own };
+      const visible: Prisma.TicketWhereInput = hasActiveGroup(actor)
+        ? { OR: [...own, { sensitive: false }, { departmentId: { in: actor.departmentIds } }] }
+        : { OR: own };
       const tickets = await tx.ticket.findMany({
         where: {
           tenantId: auth.tenantId,
@@ -301,41 +343,11 @@ export class UsersService {
     });
   }
   private async invite(tx: Tx, auth: AuthContext, user: User) {
-    if (!user.active) await this.requireSeat(tx, auth.tenantId, user.id);
-    const token = randomBytes(32).toString("base64url"),
-      expiresAt = new Date(Date.now() + 48 * 3600000);
-    const updated = await tx.user.update({
-      where: { id: user.id },
-      data: {
-        invitationHash: tokenHash(token),
-        invitationExpiresAt: expiresAt,
-        invitedAt: new Date(),
-        updatedAt: new Date(),
-        revision: { increment: 1 },
-      },
-    });
-    const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: auth.tenantId } });
-    const url = `${tenantOrigin(tenant.slug)}/#activate?token=${encodeURIComponent(token)}&organisation=${encodeURIComponent(tenant.slug)}`;
-    await tx.invitationMail.updateMany({
-      where: { tenantId: auth.tenantId, userId: user.id, status: "pending" },
-      data: { status: "skipped", encryptedUrl: null, lastError: "Invitation superseded" },
-    });
-    await tx.invitationMail.create({
-      data: {
-        tenantId: auth.tenantId,
-        userId: user.id,
-        invitationHash: tokenHash(token),
-        encryptedUrl: encryptSecret(url, `invitation:${auth.tenantId}:${user.id}`),
-      },
-    });
+    const result = await queueUserInvitation(tx, auth.tenantId, user);
     await this.audit(tx, auth, user.id, "user.invited", null, {
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: result.invitation.expiresAt,
     });
-    return {
-      user: userView(updated),
-      invitation: { url, expiresAt: expiresAt.toISOString() },
-      emailQueued: true,
-    };
+    return { ...result, user: userView(result.user) };
   }
   private async add(tx: Tx, auth: AuthContext, input: CreateUserInput) {
     await this.requireSeat(tx, auth.tenantId);
@@ -387,7 +399,11 @@ export class UsersService {
         }))
       )
         throw new ConflictException("Keep at least one active administrator");
-      if (before.active && (!input.active || (before.role === "agent" && input.role !== "agent"))) {
+      const losesStaff =
+        before.active &&
+        ["agent", "admin"].includes(before.role) &&
+        !["agent", "admin"].includes(input.role);
+      if (before.active && (!input.active || losesStaff)) {
         if (
           await tx.ticket.count({
             where: {
@@ -422,7 +438,7 @@ export class UsersService {
                 tenantId: auth.tenantId,
                 departmentId: membership.departmentId,
                 userId: { not: id },
-                user: { active: true, role: "agent" },
+                user: { active: true, role: { in: ["agent", "admin"] } },
               },
             }))
           )
@@ -482,7 +498,7 @@ export class UsersService {
         await tx.$executeRaw`UPDATE password_recoveries SET used_at=COALESCE(used_at,now()),encrypted_url=NULL,status='skipped',last_error='Account access changed' WHERE tenant_id=${auth.tenantId}::uuid AND user_id=${id}::uuid`;
       if (sensitive)
         await tx.session.deleteMany({ where: { tenantId: auth.tenantId, userId: id } });
-      if (input.role !== "agent" || !input.active)
+      if (!["agent", "admin"].includes(input.role) || !input.active)
         await tx.membership.deleteMany({ where: { tenantId: auth.tenantId, userId: id } });
       if (input.managerId !== before.managerId) {
         const requests = await tx.ticket.findMany({

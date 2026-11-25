@@ -31,6 +31,7 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
       for (const slug of slugs) {
         const tenant = await owner.tenant.findUnique({ where: { slug } });
         if (!tenant) continue;
+        await owner.membership.deleteMany({ where: { tenantId: tenant.id } });
         await owner.invitationMail.deleteMany({ where: { tenantId: tenant.id } });
         await owner.configAudit.deleteMany({ where: { tenantId: tenant.id } });
         await owner.slaSettings.deleteMany({ where: { tenantId: tenant.id } });

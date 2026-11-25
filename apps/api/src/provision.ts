@@ -65,6 +65,8 @@ export async function provisionOrganisation(body: unknown, options: ProvisionOpt
   const starter = starterTemplateSchema.parse(
     JSON.parse(await readFile(new URL("../prisma/starter-v1.json", import.meta.url), "utf8")),
   );
+  const triage = starter.departments.find((item) => item.isTriage);
+  if (!triage) throw new Error("Starter template must define a triage department");
   if (!process.env.MIGRATION_DATABASE_URL) throw new Error("MIGRATION_DATABASE_URL is required");
   const configError = platformConfigError();
   if (configError) throw new Error(configError);
@@ -115,6 +117,12 @@ export async function provisionOrganisation(body: unknown, options: ProvisionOpt
         });
         departments.set(item.name, department.id);
       }
+      const triageDepartmentId = departments.get(triage.name)!;
+      await tx.membership.create({ data: { tenantId, userId, departmentId: triageDepartmentId } });
+      await tx.department.update({
+        where: { id: triageDepartmentId },
+        data: { queueOwnerId: userId },
+      });
       for (const item of starter.categories) {
         const departmentId = departments.get(item.department);
         if (!departmentId) throw new Error("Starter template references an unknown department");
@@ -140,6 +148,8 @@ export async function provisionOrganisation(body: unknown, options: ProvisionOpt
             slug: input.slug,
             administratorEmail: input.admin.email,
             invitationExpiresAt: expiresAt.toISOString(),
+            triageDepartmentId,
+            triageQueueOwnerId: userId,
           },
         },
       });

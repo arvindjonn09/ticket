@@ -314,24 +314,23 @@ export class TicketsService {
           select: { id: true, name: true },
           orderBy: { name: "asc" },
         }),
-        agents:
-          actor.role === "agent"
-            ? await tx.user.findMany({
-                where: {
-                  tenantId: actor.tenantId,
-                  active: true,
-                  role: "agent",
-                  memberships: {
-                    some: {
-                      departmentId: { in: actor.departmentIds },
-                      department: { active: true },
-                    },
+        agents: hasActiveGroup(actor)
+          ? await tx.user.findMany({
+              where: {
+                tenantId: actor.tenantId,
+                active: true,
+                role: { in: ["agent", "admin"] },
+                memberships: {
+                  some: {
+                    departmentId: { in: actor.departmentIds },
+                    department: { active: true },
                   },
                 },
-                select: { id: true, name: true },
-                orderBy: { name: "asc" },
-              })
-            : [],
+              },
+              select: { id: true, name: true },
+              orderBy: { name: "asc" },
+            })
+          : [],
       }),
       { lock: "none" },
     );
@@ -351,7 +350,7 @@ export class TicketsService {
           OR: [
             ...own,
             ...(hasActiveGroup(actor) ? [{ sensitive: false }] : []),
-            ...(actor.role === "agent" && actor.departmentIds.length
+            ...(hasActiveGroup(actor) && actor.departmentIds.length
               ? [{ departmentId: { in: actor.departmentIds } }]
               : []),
           ],
@@ -369,7 +368,7 @@ export class TicketsService {
                 ticket.caller_id=${actor.id}::uuid OR ticket.submitted_by_id=${actor.id}::uuid
                 OR ticket.requested_for_id=${actor.id}::uuid OR ticket.id=ANY(${actor.approvalTicketIds ?? []}::uuid[])
                 OR (${hasActiveGroup(actor)} AND ticket.sensitive=false)
-                OR (${actor.role === "agent"} AND ticket.department_id=ANY(${actor.departmentIds}::uuid[]))
+                OR (${hasActiveGroup(actor)} AND ticket.department_id=ANY(${actor.departmentIds}::uuid[]))
               )
               AND (${input.scope === "mine"} = false OR ticket.caller_id=${actor.id}::uuid OR ticket.submitted_by_id=${actor.id}::uuid OR ticket.requested_for_id=${actor.id}::uuid OR ticket.assigned_to_id=${actor.id}::uuid)
               AND (${input.state ?? null}::text IS NULL OR ticket.state=${input.state ?? null})
@@ -517,8 +516,8 @@ export class TicketsService {
       }
       this.validateChannel(actor, input.channel);
       const callerId = input.callerId ?? actor.id;
-      if (callerId !== actor.id && actor.role !== "agent")
-        throw new ForbiddenException("Only support agents can submit incidents for another caller");
+      if (callerId !== actor.id && !hasActiveGroup(actor))
+        throw new ForbiddenException("Only support staff can submit incidents for another caller");
       if (
         !(await tx.user.findFirst({
           where: { tenantId: actor.tenantId, id: callerId, active: true },
@@ -578,8 +577,8 @@ export class TicketsService {
     });
   }
   validateChannel(actor: Actor, channel: string) {
-    if (actor.role !== "agent" && channel !== "Self Service")
-      throw new ForbiddenException("Only support agents can record assisted channels");
+    if (!hasActiveGroup(actor) && channel !== "Self Service")
+      throw new ForbiddenException("Only support staff can record assisted channels");
   }
   async conflict(tx: Tx, actor: Actor, id: string): Promise<never> {
     throw new ConflictException({
@@ -649,7 +648,11 @@ export class TicketsService {
           audience: input.audience,
         },
       });
-      if (input.audience === "customer" && actor.role === "agent" && !ticket.slaFirstRespondedAt)
+      if (
+        input.audience === "customer" &&
+        isGroupAgent(actor, ticket) &&
+        !ticket.slaFirstRespondedAt
+      )
         await tx.ticket.update({
           where: { id: ticket.id },
           data: { slaFirstRespondedAt: activity.createdAt },
@@ -735,7 +738,7 @@ export class TicketsService {
         ...(resolves
           ? {
               slaResolvedAt: new Date(),
-              ...(actor.role === "agent" && !ticket.slaFirstRespondedAt
+              ...(isGroupAgent(actor, ticket) && !ticket.slaFirstRespondedAt
                 ? { slaFirstRespondedAt: new Date() }
                 : {}),
             }
@@ -939,7 +942,11 @@ export class TicketsService {
     const staffed =
       destination.active &&
       (await tx.membership.count({
-        where: { tenantId: actor.tenantId, departmentId, user: { active: true, role: "agent" } },
+        where: {
+          tenantId: actor.tenantId,
+          departmentId,
+          user: { active: true, role: { in: ["agent", "admin"] } },
+        },
       })) > 0;
     const triage = staffed
       ? null
@@ -948,7 +955,9 @@ export class TicketsService {
             tenantId: actor.tenantId,
             active: true,
             isTriage: true,
-            memberships: { some: { user: { active: true, role: "agent" } } },
+            memberships: {
+              some: { user: { active: true, role: { in: ["agent", "admin"] } } },
+            },
           },
         });
     if (!staffed && !triage) throw new ConflictException("No staffed routing queue is available");
@@ -1014,7 +1023,7 @@ export class TicketsService {
               tenantId: actor.tenantId,
               departmentId: ticket.departmentId,
               userId: input.assignedToId,
-              user: { active: true, role: "agent" },
+              user: { active: true, role: { in: ["agent", "admin"] } },
               department: { active: true },
             },
           }))
@@ -1047,7 +1056,9 @@ export class TicketsService {
                 tenantId: actor.tenantId,
                 id: input.departmentId,
                 active: true,
-                memberships: { some: { user: { active: true, role: "agent" } } },
+                memberships: {
+                  some: { user: { active: true, role: { in: ["agent", "admin"] } } },
+                },
               },
             }))
           )
@@ -1062,7 +1073,7 @@ export class TicketsService {
               tenantId: actor.tenantId,
               departmentId: destinationId,
               userId: ticket.assignedToId,
-              user: { active: true, role: "agent" },
+              user: { active: true, role: { in: ["agent", "admin"] } },
             },
           }))
         )
@@ -1093,7 +1104,7 @@ export class TicketsService {
           where: {
             tenantId: actor.tenantId,
             active: true,
-            role: "agent",
+            role: { in: ["agent", "admin"] },
             memberships: {
               some: { departmentId: ticket.departmentId, department: { active: true } },
             },

@@ -15,10 +15,12 @@ export function NewIncident() {
   const cache = useQueryClient();
   const [categoryId, setCategoryId] = useState("");
   const [subcategoryId, setSubcategoryId] = useState("");
+  const isStaff =
+    ["agent", "admin"].includes(session.user.role) && session.user.departmentIds.length > 0;
   const callers = useQuery({
     queryKey: ["request-catalog"],
     queryFn: () => api<{ users: { id: string; name: string }[] }>("/requests/catalog"),
-    enabled: session.user.role === "agent",
+    enabled: isStaff,
   });
   const catalog = useQuery({
     queryKey: ["catalog"],
@@ -88,15 +90,12 @@ export function NewIncident() {
                   ...(subcategoryId ? { subcategoryId } : {}),
                   summary: String(form.get("summary")).trim(),
                   description: String(form.get("description")).trim(),
-                  channel:
-                    session.user.role === "agent" ? String(form.get("channel")) : "Self Service",
-                  ...(session.user.role === "agent"
-                    ? { callerId: String(form.get("callerId")) }
-                    : {}),
+                  channel: isStaff ? String(form.get("channel")) : "Self Service",
+                  ...(isStaff ? { callerId: String(form.get("callerId")) } : {}),
                 });
               }}
             >
-              {session.user.role === "agent" && (
+              {isStaff && (
                 <>
                   <label>
                     {t("caller")}

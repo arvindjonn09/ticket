@@ -50,6 +50,8 @@ export function NewRequest({ session }: { session: SessionView }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const cache = useQueryClient();
+  const isStaff =
+    ["agent", "admin"].includes(session.user.role) && session.user.departmentIds.length > 0;
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [subcategoryId, setSubcategoryId] = useState("");
@@ -110,11 +112,11 @@ export function NewRequest({ session }: { session: SessionView }) {
                 description: String(f.get("description")).trim(),
                 justification: String(f.get("justification")).trim(),
                 ...(subcategoryId ? { subcategoryId } : {}),
-                channel: session.user.role === "agent" ? String(f.get("channel")) : "Self Service",
+                channel: isStaff ? String(f.get("channel")) : "Self Service",
               });
             }}
           >
-            {session.user.role === "agent" && <ChannelField />}
+            {isStaff && <ChannelField />}
             <label>
               {t("requestItem")}
               <select
@@ -721,7 +723,9 @@ export function Reports({ session }: { session: SessionView }) {
           </div>
         </>
       )}
-      {session.user.role === "agent" && <Knowledge />}
+      {["agent", "admin"].includes(session.user.role) && session.user.departmentIds.length > 0 && (
+        <Knowledge />
+      )}
     </div>
   );
 }

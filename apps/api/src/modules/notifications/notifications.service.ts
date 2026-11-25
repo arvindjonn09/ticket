@@ -118,8 +118,10 @@ export class NotificationWorker {
     this.dispatching = true;
     let successful = false;
     try {
-      await this.saas.enqueueProvisioning((signupId, attempt) =>
-        this.boss.send(provisioningQueue, { signupId }, { id: `signup:${signupId}:${attempt}` }),
+      // PgBoss job IDs must be UUIDs; let it generate one. Idempotency is enforced
+      // by the single signup_provision_jobs row and provisionSignup's atomic claim.
+      await this.saas.enqueueProvisioning((signupId) =>
+        this.boss.send(provisioningQueue, { signupId }),
       );
       await this.saas.dispatchPublicMail();
       if (Date.now() - this.lastAutomationAt > 60000) {
@@ -240,7 +242,7 @@ export class NotificationWorker {
               where: {
                 tenantId: data.tenantId,
                 active: true,
-                role: "agent",
+                role: { in: ["agent", "admin"] },
                 memberships: {
                   some: { departmentId: event.ticket.departmentId, department: { active: true } },
                 },

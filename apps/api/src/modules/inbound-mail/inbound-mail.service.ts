@@ -168,7 +168,7 @@ export class InboundMailService {
           where: {
             tenantId: auth.tenantId,
             departmentId: value.triageDepartmentId,
-            user: { active: true, role: "agent" },
+            user: { active: true, role: { in: ["agent", "admin"] } },
           },
         }),
       ]);
@@ -227,7 +227,7 @@ export class InboundMailService {
           where: {
             tenantId: auth.tenantId,
             departmentId: value.departmentId,
-            user: { active: true, role: "agent" },
+            user: { active: true, role: { in: ["agent", "admin"] } },
           },
         }),
       ]);
@@ -322,7 +322,11 @@ export class InboundMailService {
           where: { tenantId: actor.tenantId, id: departmentId, active: true, isTriage: false },
         }),
         tx.membership.count({
-          where: { tenantId: actor.tenantId, departmentId, user: { active: true, role: "agent" } },
+          where: {
+            tenantId: actor.tenantId,
+            departmentId,
+            user: { active: true, role: { in: ["agent", "admin"] } },
+          },
         }),
       ]);
       if (!department || !staffed)
@@ -496,6 +500,16 @@ export class InboundMailService {
             sender!.id,
           );
           if (participant) {
+            const groupResponder = ["agent", "admin"].includes(sender!.role)
+              ? await tx.membership.findFirst({
+                  where: {
+                    tenantId,
+                    userId: sender!.id,
+                    departmentId: correlation.ticket.departmentId,
+                    department: { active: true },
+                  },
+                })
+              : null;
             await tx.activity.create({
               data: {
                 tenantId,
@@ -510,7 +524,7 @@ export class InboundMailService {
               data: {
                 revision: { increment: 1 },
                 updatedAt: new Date(),
-                ...(sender!.role === "agent" &&
+                ...(groupResponder &&
                 correlation.audience === "customer" &&
                 !correlation.ticket.slaFirstRespondedAt
                   ? { slaFirstRespondedAt: new Date() }
@@ -686,7 +700,7 @@ export class InboundMailService {
         where: {
           tenantId,
           departmentId: mapping.departmentId,
-          user: { active: true, role: "agent" },
+          user: { active: true, role: { in: ["agent", "admin"] } },
         },
       }),
     ]);
@@ -704,9 +718,16 @@ export class InboundMailService {
     const department = await tx.department.findFirst({ where: { tenantId, id: departmentId } });
     const id = department?.queueOwnerId ?? department?.substituteId;
     const user = id
-      ? await tx.user.findFirst({ where: { tenantId, id, active: true, role: "agent" } })
+      ? await tx.user.findFirst({
+          where: { tenantId, id, active: true, role: { in: ["agent", "admin"] } },
+        })
       : await tx.user.findFirst({
-          where: { tenantId, active: true, role: "agent", memberships: { some: { departmentId } } },
+          where: {
+            tenantId,
+            active: true,
+            role: { in: ["agent", "admin"] },
+            memberships: { some: { departmentId } },
+          },
           orderBy: { id: "asc" },
         });
     if (!user) throw new Error("Triage queue has no active reporter");
@@ -1001,7 +1022,7 @@ export class InboundMailService {
         userId: senderId,
         departmentId: ticket.departmentId,
         department: { active: true },
-        user: { active: true, role: "agent" },
+        user: { active: true, role: { in: ["agent", "admin"] } },
       },
     }));
   }

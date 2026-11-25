@@ -118,6 +118,7 @@ services:
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
       PLATFORM_MODE: ${PLATFORM_MODE:-single}
+      PUBLIC_SITE_HOST: ${PUBLIC_SITE_HOST:-astrama.test}
     entrypoint: ["sh", "-c"]
     command:
       - 'if [ "$$PLATFORM_MODE" = hosted ]; then exec caddy run --config /etc/caddy/Caddyfile.hosted --adapter caddyfile; else exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile; fi'

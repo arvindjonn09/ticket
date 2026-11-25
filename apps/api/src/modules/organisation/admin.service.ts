@@ -135,7 +135,7 @@ export class AdminService {
         })
       ).map(groupView),
       agents: await tx.user.findMany({
-        where: { tenantId: auth.tenantId, role: "agent", active: true },
+        where: { tenantId: auth.tenantId, role: { in: ["agent", "admin"] }, active: true },
         select: { id: true, name: true, email: true },
         orderBy: { name: "asc" },
       }),
@@ -169,12 +169,14 @@ export class AdminService {
           where: {
             tenantId: auth.tenantId,
             id: { in: input.memberIds },
-            role: "agent",
+            role: { in: ["agent", "admin"] },
             active: true,
           },
         })) !== input.memberIds.length
       )
-        throw new BadRequestException("Members must be active agents in this organisation");
+        throw new BadRequestException(
+          "Members must be active agents or administrators in this organisation",
+        );
       const queueOwnerId =
         input.queueOwnerId === undefined ? (before?.queueOwnerId ?? null) : input.queueOwnerId;
       const substituteId =

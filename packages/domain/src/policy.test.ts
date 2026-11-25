@@ -6,6 +6,7 @@ import {
   canConfigureOrganisation,
   canMessage,
   canReadTicket,
+  canReadOperatorTicket,
   canTransition,
   effectiveDepartment,
   eligibleApprover,
@@ -24,6 +25,23 @@ const ticket: Ticket = {
   state: "Open",
 };
 describe("incident policy", () => {
+  it("requires a live tenant grant and preserves sensitive group boundaries for operators", () => {
+    const now = new Date("2026-11-18T02:00:00Z");
+    const access = {
+      tenantId: "one",
+      expiresAt: new Date(now.getTime() + 60000),
+      revokedAt: null,
+      departmentIds: ["it"],
+    };
+    expect(canReadOperatorTicket(access, ticket, now)).toBe(true);
+    expect(canReadOperatorTicket(access, { ...ticket, sensitive: true }, now)).toBe(true);
+    expect(
+      canReadOperatorTicket({ ...access, departmentIds: [] }, { ...ticket, sensitive: true }, now),
+    ).toBe(false);
+    expect(canReadOperatorTicket({ ...access, revokedAt: now }, ticket, now)).toBe(false);
+    expect(canReadOperatorTicket({ ...access, expiresAt: now }, ticket, now)).toBe(false);
+    expect(canReadOperatorTicket({ ...access, tenantId: "two" }, ticket, now)).toBe(false);
+  });
   it("requires verified admin for config, never grants admin ticket bypass, and inherits only null overrides", () => {
     const admin = { ...agent, role: "admin" as const, mfaVerified: true };
     expect(canConfigureOrganisation(admin)).toBe(true);
@@ -31,8 +49,18 @@ describe("incident policy", () => {
     expect(canConfigureOrganisation({ ...agent, mfaVerified: true })).toBe(false);
     expect(canReadTicket(admin, ticket)).toBe(true);
     expect(canReadTicket({ ...admin, departmentIds: [] }, ticket)).toBe(false);
-    expect(canReadTicket(admin, { ...ticket, sensitive: true })).toBe(false);
-    expect(canClaimTicket(admin, ticket)).toBe(false);
+    expect(canReadTicket(admin, { ...ticket, sensitive: true })).toBe(true);
+    expect(canReadTicket({ ...admin, departmentIds: [] }, { ...ticket, sensitive: true })).toBe(
+      false,
+    );
+    expect(canReadTicket({ ...admin, role: "employee" }, { ...ticket, sensitive: true })).toBe(
+      false,
+    );
+    expect(canClaimTicket(admin, ticket)).toBe(true);
+    expect(canClaimTicket({ ...admin, departmentIds: [] }, ticket)).toBe(false);
+    expect(canMessage(admin, ticket, "internal")).toBe(true);
+    expect(canTransition(admin, ticket, "In Progress")).toBe(true);
+    expect(canClaimTicket({ ...admin, tenantId: "two" }, ticket)).toBe(false);
     expect(effectiveDepartment("base", null)).toBe("base");
     expect(effectiveDepartment("base", "override")).toBe("override");
   });

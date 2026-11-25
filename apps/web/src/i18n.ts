@@ -121,8 +121,8 @@ void i18n.use(initReactI18next).init({
         allCategories: "All categories",
         channelFilter: "Filter by channel",
         allChannels: "All channels",
-        agentFilter: "Filter by support agent",
-        allAgents: "All support agents",
+        agentFilter: "Filter by support member",
+        allAgents: "All support members",
         queueReadinessWarning:
           "Queue owner or substitute not configured: {{groups}}. Select group members to cover assignment and escalation.",
         duplicateTicket: "Duplicate ticket number (optional)",
@@ -132,7 +132,7 @@ void i18n.use(initReactI18next).init({
         waitingHours: "Waiting {{count}} hours",
         fulfilRequest: "Fulfil service request",
         completeRequest: "Complete request",
-        assignAgent: "Assign a support agent",
+        assignAgent: "Assign a support member",
         rejectionReasonRequired: "Give a reason for rejecting this request.",
         newRequest: "Request a service",
         requestIntro:
@@ -356,7 +356,7 @@ void i18n.use(initReactI18next).init({
           "Manage your support groups and incident routing. Changes apply to new incidents; existing incidents keep their destination.",
         supportGroups: "Support groups",
         groupsIntro:
-          "Choose active support agents for each group. A staffed triage group remains available as a fallback.",
+          "Choose active agents or administrators for each group. A staffed triage group remains available as a fallback.",
         categories: "Categories",
         subcategories: "Subcategories",
         createGroup: "Create group",
@@ -367,7 +367,7 @@ void i18n.use(initReactI18next).init({
         editSubcategory: "Edit subcategory: {{name}}",
         groupName: "Group name",
         groupMembers: "Group members",
-        noAgents: "No active support agents are available.",
+        noAgents: "No active agents or administrators are available.",
         triageGroup: "Triage group: keep this group active and staffed.",
         categoryName: "Category name",
         subcategoryName: "Subcategory name",

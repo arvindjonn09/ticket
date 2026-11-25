@@ -5,6 +5,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/site/package.json apps/site/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/domain/package.json packages/domain/package.json
 RUN pnpm install --frozen-lockfile
@@ -15,6 +16,11 @@ FROM build AS api
 EXPOSE 4311
 USER node
 CMD ["pnpm", "--filter", "@astrama/api", "start"]
+
+FROM build AS site
+EXPOSE 4320
+USER node
+CMD ["pnpm", "--filter", "@astrama/site", "dev"]
 
 FROM build AS package-api
 RUN pnpm --filter @astrama/api deploy --prod --legacy /runtime
@@ -30,8 +36,16 @@ USER node
 EXPOSE 4311
 CMD ["node", "dist/main.js"]
 
+FROM mcr.microsoft.com/playwright:v1.65.0-noble AS e2e
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
+RUN npm install -g pnpm@10.34.9
+WORKDIR /app
+COPY --from=build /app /app
+CMD ["pnpm", "exec", "playwright", "test", "e2e/hosted-onboarding.spec.ts"]
+
 FROM caddy:2.10-alpine AS web
 COPY infra/Caddyfile /etc/caddy/Caddyfile
 COPY infra/Caddyfile.hosted /etc/caddy/Caddyfile.hosted
 COPY --from=build /app/apps/web/dist /srv
+COPY --from=build /app/apps/site/dist /public
 EXPOSE 80 443

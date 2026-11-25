@@ -1,6 +1,6 @@
 import { Controller, ForbiddenException, Get, Param, Req, Res, UseGuards } from "@nestjs/common";
 import type { FastifyReply } from "fastify";
-import { canReadTicket, isGroupAgent, terminalStates } from "@astrama/domain";
+import { canReadTicket, hasActiveGroup, isGroupAgent, terminalStates } from "@astrama/domain";
 import { z } from "zod";
 import { AuthRequest, SessionGuard } from "../auth/auth.service.js";
 import { Database } from "../../database.js";
@@ -41,16 +41,6 @@ export class ReportsController {
       ).filter((t) => canReadTicket(current, t));
       const ids = records.map((t) => t.id),
         now = Date.now();
-      const activities = await tx.activity.findMany({
-        where: {
-          tenantId: current.tenantId,
-          ticketId: { in: ids },
-          audience: "customer",
-          author: { role: "agent" },
-        },
-        select: { ticketId: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
-      });
       const audits = await tx.audit.findMany({
         where: {
           tenantId: current.tenantId,
@@ -62,8 +52,9 @@ export class ReportsController {
       });
       const firstResponse = new Map<string, number>(),
         resolved = new Map<string, number>();
-      for (const a of activities)
-        if (!firstResponse.has(a.ticketId)) firstResponse.set(a.ticketId, a.createdAt.getTime());
+      for (const ticket of records)
+        if (ticket.slaFirstRespondedAt)
+          firstResponse.set(ticket.id, ticket.slaFirstRespondedAt.getTime());
       for (const a of audits)
         if (
           ["Resolved", "Complete"].includes(String((a.detail as Record<string, unknown>).to)) &&
@@ -233,7 +224,7 @@ export class ReportsController {
   @Get("knowledge") async knowledge(@Req() req: AuthRequest) {
     const { search } = z.object({ search: z.string().trim().min(2).max(160) }).parse(req.query);
     return this.tickets.scoped(req.auth, async (tx, current) => {
-      if (current.role !== "agent") throw new ForbiddenException("Support agent required");
+      if (!hasActiveGroup(current)) throw new ForbiddenException("Support staff required");
       const tickets = await tx.ticket.findMany({
         where: {
           tenantId: current.tenantId,

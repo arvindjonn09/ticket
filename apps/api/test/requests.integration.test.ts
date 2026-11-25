@@ -827,7 +827,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.MIGRATION_DATABASE_URL
       };
       await expect(
         tickets.create(employee, { ...payload, callerId: recipient.id }, randomUUID()),
-      ).rejects.toThrow("Only support agents");
+      ).rejects.toThrow("Only support staff");
       await expect(
         tickets.create(agent, { ...payload, callerId: foreignUserId }, randomUUID()),
       ).rejects.toThrow("active caller");

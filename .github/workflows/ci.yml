@@ -56,7 +56,7 @@ jobs:
       - run: pnpm typecheck
       - run: node --test scripts/check-production.test.mjs scripts/backup-stack.test.mjs
       - name: Start the app and database
-        run: docker compose up --build -d db setup api web mail storage storage-setup scanner
+        run: docker compose up --build -d db setup api web site mail storage storage-setup scanner
       - name: Wait for the app
         run: |
           for attempt in {1..30}; do
@@ -67,6 +67,16 @@ jobs:
           done
           docker compose ps
           docker compose logs
+          exit 1
+      - name: Wait for the public site
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:4320/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs site
           exit 1
       - run: pnpm --filter @astrama/domain --filter @astrama/web test
       - name: Verify scanning, object storage and mail delivery
@@ -89,6 +99,7 @@ jobs:
       - run: pnpm test:e2e
         env:
           BROWSER_MATRIX: "1"
+          PUBLIC_SITE_ORIGIN: http://localhost:4320
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -100,3 +111,18 @@ jobs:
       - name: Stop local services
         if: always()
         run: docker compose down --volumes
+
+  hosted-onboarding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify hosted onboarding in Chromium, Firefox and WebKit
+        shell: pwsh
+        run: ./scripts/test-hosted-onboarding.ps1 
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: hosted-onboarding-failure-evidence
+          path: test-results/
+          retention-days: 7

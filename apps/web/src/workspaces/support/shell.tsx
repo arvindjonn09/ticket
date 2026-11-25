@@ -21,6 +21,8 @@ export function Shell({ session }: { session: SessionView }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const [params] = useSearchParams();
+  const isStaff =
+    ["agent", "admin"].includes(session.user.role) && session.user.departmentIds.length > 0;
   const brandColour = /^#[0-9a-f]{6}$/i.test(session.tenant.primaryColour || "")
     ? session.tenant.primaryColour
     : undefined;
@@ -82,9 +84,9 @@ export function Shell({ session }: { session: SessionView }) {
                 }
               >
                 <Inbox size={18} />
-                {t(session.user.role === "agent" ? "allTickets" : "myTickets")}
+                {t(isStaff ? "allTickets" : "myTickets")}
               </NavLink>
-              {session.user.role === "agent" && (
+              {isStaff && (
                 <Link
                   to="/tickets?scope=mine"
                   className={params.get("scope") === "mine" ? "nav-link active" : "nav-link"}

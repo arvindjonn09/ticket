@@ -16,7 +16,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { forgotPasswordSchema, resetPasswordSchema } from "@astrama/contracts";
 import { AuthService, reserveAuthAttempt, tokenHash } from "./modules/auth/auth.service.js";
-import { Database, lockConfiguration } from "./database.js";
+import { Database, lockConfiguration, type Tx } from "./database.js";
 import { decryptSecret, encryptSecret } from "./mfa.js";
 import { tenantOrigin } from "./platform.js";
 
@@ -176,7 +176,12 @@ export async function assertDatabaseOwner(db: PrismaClient) {
   if (!role?.allowed) throw new Error("Database owner connection required");
 }
 /** Offline, operator-verified action. Email possession alone is never sufficient. */
-export async function recoverLostMfa(db: PrismaClient, body: unknown, apply = false) {
+export async function recoverLostMfa(
+  db: PrismaClient,
+  body: unknown,
+  apply = false,
+  authorize?: (tx: Tx) => Promise<void>,
+) {
   const input = lostMfaSchema.parse(body);
   await assertDatabaseOwner(db);
   return db.$transaction(async (tx) => {
@@ -185,6 +190,7 @@ export async function recoverLostMfa(db: PrismaClient, body: unknown, apply = fa
     if (!tenant) throw new Error("Active organisation not found");
     await tx.$executeRaw`SELECT set_config('app.tenant_id',${tenant.id},true)`;
     await lockConfiguration(tx, tenant.id);
+    if (authorize) await authorize(tx);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`mfa:${input.userId}`},0))`;
     const user = await tx.user.findFirst({
       where: {

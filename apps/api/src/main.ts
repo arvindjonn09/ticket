@@ -30,6 +30,13 @@ import {
 } from "./modules/billing/saas.service.js";
 import { AuthService, SessionGuard, type AuthRequest } from "./modules/auth/auth.service.js";
 import { Database } from "./database.js";
+import { OperatorAuthController, OperatorAuthService, OperatorGuard } from "./operator-auth.js";
+import {
+  OperatorAccessService,
+  OperatorTicketsController,
+  TenantOperatorAccessController,
+} from "./operator-access.js";
+import { OperatorConsoleController, OperatorConsoleService } from "./operator-console.js";
 import { TicketsService } from "./modules/tickets/tickets.service.js";
 import { AdminService } from "./modules/organisation/admin.service.js";
 import {
@@ -232,6 +239,10 @@ class AdminController {
 }
 @Module({
   controllers: [
+    OperatorAuthController,
+    OperatorConsoleController,
+    OperatorTicketsController,
+    TenantOperatorAccessController,
     PublicController,
     SignupController,
     BillingController,
@@ -252,6 +263,10 @@ class AdminController {
     InboundMailAdminController,
   ],
   providers: [
+    OperatorAuthService,
+    OperatorConsoleService,
+    OperatorGuard,
+    OperatorAccessService,
     Database,
     AuthService,
     SessionGuard,

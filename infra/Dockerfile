@@ -6,11 +6,13 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/site/package.json apps/site/package.json
+COPY apps/operator/package.json apps/operator/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/domain/package.json packages/domain/package.json
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
+RUN mkdir -p /exports && chown node:node /exports && chmod 700 /exports
 
 FROM build AS api
 EXPOSE 4311
@@ -22,6 +24,11 @@ EXPOSE 4320
 USER node
 CMD ["pnpm", "--filter", "@astrama/site", "dev"]
 
+FROM build AS operator
+EXPOSE 4321
+USER node
+CMD ["pnpm", "--filter", "@astrama/operator", "dev"]
+
 FROM build AS package-api
 RUN pnpm --filter @astrama/api deploy --prod --legacy /runtime
 # Prisma's generated client is a build artifact, not an install-time network operation.
@@ -30,6 +37,7 @@ RUN mkdir -p /runtime/node_modules/.prisma && cp -a /app/node_modules/.pnpm/@pri
 FROM node:24-bookworm-slim AS api-production
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+RUN mkdir -p /exports && chown node:node /exports && chmod 700 /exports
 COPY --from=package-api --chown=node:node /runtime /app
 ENV NODE_ENV=production
 USER node
@@ -48,4 +56,5 @@ COPY infra/Caddyfile /etc/caddy/Caddyfile
 COPY infra/Caddyfile.hosted /etc/caddy/Caddyfile.hosted
 COPY --from=build /app/apps/web/dist /srv
 COPY --from=build /app/apps/site/dist /public
+COPY --from=build /app/apps/operator/dist /operator
 EXPOSE 80 443

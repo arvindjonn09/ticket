@@ -356,3 +356,5 @@ export * from "./users.js";
 export * from "./data-policy.js";
 export * from "./recovery.js";
 export * from "./automation.js";
+
+export * from "./operator.js";

@@ -11,6 +11,7 @@ x-api-env: &runtime
   APP_BASE_DOMAIN: ${APP_BASE_DOMAIN:-astrama.test}
   PUBLIC_SITE_ORIGIN: ${PUBLIC_SITE_ORIGIN:-https://astrama.test}
   OPERATOR_ORIGIN: ${OPERATOR_ORIGIN:-https://ops.astrama.test}
+  OPERATOR_IP_ALLOWLIST: ${OPERATOR_IP_ALLOWLIST:-}
   DEFAULT_TRIAL_SEAT_LIMIT: ${DEFAULT_TRIAL_SEAT_LIMIT:-25}
   PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-stripe}
   STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
@@ -106,6 +107,8 @@ services:
       <<: [*runtime, *mail]
       MIGRATION_DATABASE_URL: postgresql://astrama_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/astrama
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD}
+      OPERATOR_EXPORT_DIRECTORY: /exports
+    volumes: ["operator_exports:/exports"]
     read_only: true
     tmpfs: ["/tmp:size=64m,mode=1777"]
     cap_drop: [ALL]
@@ -119,6 +122,7 @@ services:
       APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
       PLATFORM_MODE: ${PLATFORM_MODE:-single}
       PUBLIC_SITE_HOST: ${PUBLIC_SITE_HOST:-astrama.test}
+      OPERATOR_SITE_HOST: ${OPERATOR_SITE_HOST:-ops.astrama.test}
     entrypoint: ["sh", "-c"]
     command:
       - 'if [ "$$PLATFORM_MODE" = hosted ]; then exec caddy run --config /etc/caddy/Caddyfile.hosted --adapter caddyfile; else exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile; fi'
@@ -176,6 +180,7 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
 volumes:
+  operator_exports:
   database:
   files:
   signatures:

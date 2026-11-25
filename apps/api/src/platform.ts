@@ -43,6 +43,13 @@ export function validTenantSlug(value: string, env: NodeJS.ProcessEnv = process.
       .map((item) => item.trim().toLowerCase())
       .filter(Boolean),
   );
+  const base = env.APP_BASE_DOMAIN?.toLowerCase().replace(/\.$/, "");
+  if (base)
+    for (const origin of [env.PUBLIC_SITE_ORIGIN, env.OPERATOR_ORIGIN]) {
+      const host = originHost(origin),
+        suffix = `.${base}`;
+      if (host?.endsWith(suffix)) configuredReserved.add(host.slice(0, -suffix.length));
+    }
   return validSlug(value) && !reservedSlugs.has(value) && !configuredReserved.has(value);
 }
 
@@ -88,6 +95,8 @@ export function platformConfigError(env: NodeJS.ProcessEnv = process.env) {
     return "APP_BASE_DOMAIN must be a hostname";
   if (!originHost(env.PUBLIC_SITE_ORIGIN) || !originHost(env.OPERATOR_ORIGIN))
     return "PUBLIC_SITE_ORIGIN and OPERATOR_ORIGIN must be exact origins";
+  if (originHost(env.PUBLIC_SITE_ORIGIN) === originHost(env.OPERATOR_ORIGIN))
+    return "Public site and operator origins must use different hostnames";
   if (
     ![env.PUBLIC_SITE_ORIGIN, env.OPERATOR_ORIGIN].every((value) => {
       try {
@@ -123,7 +132,8 @@ export function tenantOrigin(slug: string, env: NodeJS.ProcessEnv = process.env)
   if (!validTenantSlug(slug, env)) throw new Error("Invalid tenant hostname");
   const base = env.APP_BASE_DOMAIN?.toLowerCase().replace(/\.$/, "");
   if (!base) throw new Error("APP_BASE_DOMAIN must be configured");
-  return `https://${slug}.${base}`;
+  const port = env.PUBLIC_SITE_ORIGIN ? new URL(env.PUBLIC_SITE_ORIGIN).port : "";
+  return `https://${slug}.${base}${port ? `:${port}` : ""}`;
 }
 
 export function expectedRequestOrigin(

@@ -105,7 +105,7 @@ try {
     Write-Host "Hosted journey: $prefix ($slug); browser selection: $Project"
     $testFiles = @()
     if ($Journey -in @('onboarding', 'all')) { $testFiles += 'e2e/hosted-onboarding.spec.ts' }
-    
+    if ($Journey -in @('operator', 'all')) { $testFiles += 'e2e/operator-console.spec.ts' }
     $browserCommand = @($browserImage, 'pnpm', 'exec', 'playwright', 'test') + $testFiles
     if ($Project -ne 'all') { $browserCommand += @('--project', $Project) }
     Invoke-Docker -DockerArguments (@(

@@ -385,6 +385,7 @@ export class SessionGuard implements CanActivate {
         "/api/auth/mfa/verify",
         "/api/billing/checkout",
         "/api/billing/portal",
+        "/api/admin/operator-access/revoke",
       ].includes(request.url.split("?")[0]!)
     )
       throw new ForbiddenException({

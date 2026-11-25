@@ -1,10 +1,10 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { createTransport } from "nodemailer";
-import { Database } from "../../database.js";
-import { lockConfigurationExclusive } from "../../database.js";
+import { Database, lockConfigurationExclusive } from "../../database.js";
 import { tenantOrigin } from "../../platform.js";
 import { deleteExpiredTenant } from "../../operator-data.js";
+import { processOperatorJobs } from "../../operator-jobs.js";
 
 type LifecycleTenant = {
   tenant_id: string;
@@ -41,6 +41,9 @@ export class TenantLifecycleService implements OnModuleDestroy {
   }
 
   async run(now = new Date()) {
+    await this.owner
+      .$executeRaw`DELETE FROM tenant_budgets WHERE window_start<${new Date(now.getTime() - 2 * 86400000)}`;
+    await processOperatorJobs(this.owner);
     const tenants = await this.db.$queryRaw<LifecycleTenant[]>`
       SELECT * FROM pending_tenant_lifecycle()
     `;
@@ -106,7 +109,7 @@ export class TenantLifecycleService implements OnModuleDestroy {
         if (elapsed(current.delete_after, now))
           await deleteExpiredTenant(this.owner, current.tenant_id, now);
       } catch {
-        console.error(JSON.stringify({ event: "tenant.lifecycle.failed" }));
+        console.error(JSON.stringify({ event: "tenant.lifecycle.failed", tenantSlug: item.slug }));
       }
     }
   }

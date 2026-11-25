@@ -86,6 +86,7 @@ const tenantTables = [
   "tickets",
   "catalog_items",
   "sessions",
+  "operator_support_grants",
   "memberships",
   "subcategories",
   "categories",

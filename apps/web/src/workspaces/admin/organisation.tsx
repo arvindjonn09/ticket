@@ -19,6 +19,7 @@ import { SlaPanel } from "../../sla";
 import { DataPolicyPanel } from "../../data-policy";
 import { OperationsPanel } from "../../operations";
 import { InboundMailPanel } from "../../inbound-mail";
+import { OperatorAccessPanel } from "../../operator-access";
 
 export function AuthenticatorSetup({ session }: { session: SessionView }) {
   const { t } = useTranslation();
@@ -521,6 +522,10 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
   const { t } = useTranslation();
   const [saved, setSaved] = useState(false);
   const [section, setSection] = useState("groups");
+  const platform = useQuery({
+    queryKey: ["platform-host"],
+    queryFn: () => api<{ mode: string }>("/platform/host"),
+  });
   const config = useQuery({
     queryKey: ["admin-config", session.tenant.id],
     queryFn: () => api<AdminConfig>("/admin/config"),
@@ -575,6 +580,9 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
                 <option value="inbound-mail">Inbound email</option>
                 <option value="data-policy">{t("dataPolicySettings")}</option>
                 <option value="operations">{t("serviceHealth")}</option>
+                {platform.data?.mode === "hosted" && (
+                  <option value="operator-access">{t("operatorAccess:title")}</option>
+                )}
               </select>
             </label>
             <p className="muted">{t("setupOrder")}</p>
@@ -585,6 +593,9 @@ export function OrganisationSetup({ session }: { session: SessionView }) {
             </p>
           )}
           <div id="organisation-panels">
+            {section === "operator-access" && platform.data?.mode === "hosted" && (
+              <OperatorAccessPanel session={session} />
+            )}
             <div hidden={section !== "automation"}>
               <AutomationPanel session={session} />
             </div>

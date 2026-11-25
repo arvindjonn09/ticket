@@ -20,7 +20,7 @@ export async function rotateEncryptionKey(
     async (tx) => {
       // Fail closed for an owner constrained by FORCE RLS instead of reporting a partial/empty rotation.
       await tx.$executeRaw`SET LOCAL row_security=off`;
-      await tx.$executeRaw`LOCK TABLE public.users,public.invitation_mails,public.password_recoveries,public.password_recovery_requests IN ACCESS EXCLUSIVE MODE`;
+      await tx.$executeRaw`LOCK TABLE public.users,public.operators,public.invitation_mails,public.password_recoveries,public.password_recovery_requests,public.public_mail_outbox,public.inbound_mail_settings IN ACCESS EXCLUSIVE MODE`;
       const secrets = await tx.$queryRaw<
         { id: string; tenant_id: string; secret: string }[]
       >`SELECT id,tenant_id,mfa_secret AS secret FROM users WHERE mfa_secret IS NOT NULL`;
@@ -33,6 +33,12 @@ export async function rotateEncryptionKey(
       const requests = await tx.$queryRaw<
         { id: string; secret: string }[]
       >`SELECT id,encrypted_request AS secret FROM password_recovery_requests WHERE encrypted_request IS NOT NULL`;
+      const operators = await tx.$queryRaw<{ id: string; secret: string }[]>`
+        SELECT id,encrypted_mfa_secret AS secret FROM operators WHERE encrypted_mfa_secret IS NOT NULL`;
+      const publicMails = await tx.$queryRaw<{ id: string; identity: string; secret: string }[]>`
+        SELECT id,identity,encrypted_url AS secret FROM public_mail_outbox WHERE encrypted_url IS NOT NULL`;
+      const inbound = await tx.$queryRaw<{ tenant_id: string; secret: string }[]>`
+        SELECT tenant_id,encrypted_webhook_secret AS secret FROM inbound_mail_settings WHERE encrypted_webhook_secret IS NOT NULL`;
       const reencrypt = (secret: string, identity: string) => {
         const plain = decryptSecret(secret, identity, oldKey),
           encrypted = encryptSecret(plain, identity, newKey);
@@ -63,12 +69,30 @@ export async function rotateEncryptionKey(
         if (apply)
           await tx.$executeRaw`UPDATE password_recovery_requests SET encrypted_request=${encrypted} WHERE id=${row.id}::uuid`;
       }
+      for (const row of operators) {
+        const encrypted = reencrypt(row.secret, `operator:${row.id}`);
+        if (apply)
+          await tx.$executeRaw`UPDATE operators SET encrypted_mfa_secret=${encrypted} WHERE id=${row.id}::uuid`;
+      }
+      for (const row of publicMails) {
+        const encrypted = reencrypt(row.secret, row.identity);
+        if (apply)
+          await tx.$executeRaw`UPDATE public_mail_outbox SET encrypted_url=${encrypted} WHERE id=${row.id}::uuid`;
+      }
+      for (const row of inbound) {
+        const encrypted = reencrypt(row.secret, `inbound-mail:${row.tenant_id}`);
+        if (apply)
+          await tx.$executeRaw`UPDATE inbound_mail_settings SET encrypted_webhook_secret=${encrypted} WHERE tenant_id=${row.tenant_id}::uuid`;
+      }
       return {
         applied: apply,
         mfaSecrets: secrets.length,
         invitationLinks: invitations.length,
         recoveryLinks: recoveries.length,
         recoveryRequests: requests.length,
+        operatorMfaSecrets: operators.length,
+        publicMailLinks: publicMails.length,
+        inboundWebhookSecrets: inbound.length,
       };
     },
     { maxWait: 10000, timeout: 120000 },

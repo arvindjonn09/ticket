@@ -86,3 +86,38 @@ verify that replying reaches the correct tenant and ticket. The DNS names,
 public keys, relay mechanisms, reporting address, domain and hosting region
 remain deployment inputs. Legal text, tax setup and custom web domains are
 deferred.
+
+## Receiving SMTP mail (EM-01)
+
+The `mail-intake` profile exposes SMTP port 25 and accepts only configured,
+active tenant addresses. It does not relay mail to external recipients and
+does not offer SMTP AUTH. Point the inbound domain's MX record to this host,
+and allow inbound TCP 25. Place the TLS certificate and key in the private
+`MAIL_INTAKE_TLS_DIRECTORY` as `tls.crt` and `tls.key`, readable by the runtime
+user. Production startup requires both; clients can negotiate STARTTLS.
+
+Start it with the published release after migrations finish:
+`docker compose -f compose.production.yaml --profile mail-intake up -d`.
+The local hosted sandbox instead exposes `127.0.0.1:2525` when its
+`mail-intake` profile is enabled, and uses Mailpit for outgoing mail.
+
+New starter organisations receive `<slug>@<inbound domain>` routed to their
+starter triage category. Existing configured organisations receive that alias
+when an MFA administrator opens Email settings. Department aliases such as
+`<slug>+it@<inbound domain>` are explicit mappings to staffed queues; unknown
+aliases are refused. Reply tokens append `+t.<token>` after any department
+suffix. SMTP and webhook intake both retain tenant-scoped deduplication,
+quarantine/scanning, rate limits and routing checks.
+
+Email settings includes Microsoft 365 and Google Workspace forwarding guides.
+“Check now” issues a 30-minute one-time subject code: send it to the customer's
+own support mailbox and wait for forwarding. Only a matching received probe
+marks the check Working. The code is stored hashed, omitted from subsequent
+responses, and does not create a ticket.
+
+The receiver computes SPF, DKIM and DMARC from the untouched SMTP DATA and
+connection; supplied Authentication-Results/Received headers confer no trust.
+Forwarded SPF failure is acceptable when original DKIM keeps DMARC passing.
+Unsigned MIME delivery reports receive no trusted bounce status; the existing
+signed test adapter remains for CI bounce coverage. Optional Graph/IMAP mailbox
+polling is deferred.

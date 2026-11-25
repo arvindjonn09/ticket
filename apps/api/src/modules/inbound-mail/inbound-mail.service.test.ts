@@ -15,4 +15,15 @@ describe("collapseQuotedHistory", () => {
   ])("removes %s quoted history", (_client, text) => {
     expect(collapseQuotedHistory(text)).toBe("My reply");
   });
+
+  it("preserves plaintext paragraphs without quoted history", () => {
+    const text = "Please help with this.\n\nThis is a second paragraph.";
+    expect(collapseQuotedHistory(text)).toBe(text);
+  });
+
+  it("removes quoted lines and a standard signature", () => {
+    expect(
+      collapseQuotedHistory("My reply\n\n-- \nAlex\nSupport\n\n> Prior question\n> Prior context"),
+    ).toBe("My reply");
+  });
 });

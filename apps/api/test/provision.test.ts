@@ -33,6 +33,8 @@ describe.skipIf(!process.env.MIGRATION_DATABASE_URL)(
         if (!tenant) continue;
         await owner.membership.deleteMany({ where: { tenantId: tenant.id } });
         await owner.invitationMail.deleteMany({ where: { tenantId: tenant.id } });
+        await owner.inboundMailAddress.deleteMany({ where: { tenantId: tenant.id } });
+        await owner.inboundMailSettings.deleteMany({ where: { tenantId: tenant.id } });
         await owner.configAudit.deleteMany({ where: { tenantId: tenant.id } });
         await owner.slaSettings.deleteMany({ where: { tenantId: tenant.id } });
         await owner.tenantLifecycleNotice.deleteMany({ where: { tenantId: tenant.id } });

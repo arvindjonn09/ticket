@@ -242,8 +242,9 @@ Implemented features are marked ✓. Everything else is to build or to supply.
 - Seat changes: when an admin invites beyond the seat limit, offer "Add seats",
   which updates the subscription quantity through the portal or the API with
   proration. This is needed if prices are per seat (OD-3).
-- Feature flags on billing plans (`customDomain`, `ownEmail`) so these features
-  can be included or charged as add-ons per customer (**OD-9**).
+- A future custom-domain plan flag remains deferred. Own SMTP and Microsoft 365
+  connections are included on every plan (**OD-9**, answered 25 November); do not
+  add a paid-plan gate.
 
 **Trust and legal (owner supplies text; OD-6)**
 
@@ -404,8 +405,7 @@ Rollback to mox is one click. Customers' own-server settings are unaffected.
   above). Testing sends through self-hosted mox (MS-01). The owner chooses a
   paid sending relay only at launch, in the operator console, without code
   changes.
-- **OD-9:** is own email (EM-03) included in every plan or a paid add-on?
-  (The custom domain is deferred; see the owner direction above.)
+- **OD-9 (answered 25 November 2026):** own SMTP and Microsoft 365 email connections are included in every plan. No paid-plan gate.
 
 ## Order
 

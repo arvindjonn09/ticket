@@ -9,6 +9,7 @@ x-api-env: &runtime
   PLATFORM_MODE: ${PLATFORM_MODE:-single}
   APP_ORIGIN: ${APP_ORIGIN:-https://${APP_DOMAIN:-localhost}}
   APP_BASE_DOMAIN: ${APP_BASE_DOMAIN:-astrama.test}
+  INBOUND_MAIL_DOMAIN: ${INBOUND_MAIL_DOMAIN:-}
   PUBLIC_SITE_ORIGIN: ${PUBLIC_SITE_ORIGIN:-https://astrama.test}
   OPERATOR_ORIGIN: ${OPERATOR_ORIGIN:-https://ops.astrama.test}
   OPERATOR_IP_ALLOWLIST: ${OPERATOR_IP_ALLOWLIST:-}
@@ -40,8 +41,37 @@ x-mail-env: &mail
   SMTP_PASSWORD: ${SMTP_PASSWORD:?Set SMTP_PASSWORD}
   SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
   PLATFORM_MAIL_DOMAIN: ${PLATFORM_MAIL_DOMAIN:-}
-  INBOUND_MAIL_DOMAIN: ${INBOUND_MAIL_DOMAIN:-}
 services:
+  mail-intake:
+    image: "${CONTAINER_REGISTRY:-ghcr.io/arvindjonn09}/astrama-api:${RELEASE_TAG:?Set RELEASE_TAG to a published version-SHA tag}"
+    profiles: ["mail-intake"]
+    command: ["node", "dist/mail-intake.js"]
+    restart: unless-stopped
+    environment:
+      <<: *runtime
+      MAIL_INTAKE_PORT: "25"
+      INBOUND_MAIL_DOMAIN: ${INBOUND_MAIL_DOMAIN:-}
+      MAIL_INTAKE_TLS_KEY_FILE: /run/mail-intake/tls.key
+      MAIL_INTAKE_TLS_CERT_FILE: /run/mail-intake/tls.crt
+    ports: ["25:25"]
+    volumes: ["${MAIL_INTAKE_TLS_DIRECTORY:-./secrets/mail-intake}:/run/mail-intake:ro"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    depends_on: { setup: { condition: service_completed_successfully } }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(25,'127.0.0.1');s.once('connect',()=>{s.destroy();process.exit(0)});s.once('error',()=>process.exit(1));s.setTimeout(3000,()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 4s
+      retries: 5
+    logging: *default-logging
   db:
     image: postgres:16-bookworm
     logging: *default-logging

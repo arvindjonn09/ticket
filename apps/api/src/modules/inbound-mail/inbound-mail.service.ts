@@ -10,8 +10,9 @@ import {
 import { Controller, Get, Headers, HttpCode, Post, Req, UseGuards } from "@nestjs/common";
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Prisma, type InboundMailSettings as MailSettings, type Ticket } from "@prisma/client";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import sanitizeHtml from "sanitize-html";
+import EmailReplyParser from "email-reply-parser";
 import { effectiveDepartment } from "@astrama/domain";
 import {
   Database,
@@ -32,6 +33,8 @@ import {
 } from "@astrama/contracts";
 import type { AuthContext } from "../auth/auth.service.js";
 import { reserveTenantBudget } from "../../tenant-budgets.js";
+import { platformInboundAddress } from "../../platform-mail.js";
+import { consumeForwardingProbe, ensurePlatformInbox } from "../../platform-inbox.js";
 import {
   isLoopMessage,
   notificationDeliveryId,
@@ -57,12 +60,12 @@ const allowedHtml = {
 const terminalMailStates = ["Complete", "Cancelled", "Rejected"];
 
 export function collapseQuotedHistory(text: string) {
-  return text
-    .split(
-      /\r?\n(?:On .{1,200}wrote:|_{5,}\s*Forwarded message\s*_{5,}|-{5,}\s*Original Message\s*-{5,}|_{10,}\r?\nFrom: [^\r\n]+(?:\r?\nSent: [^\r\n]*)?|From: [^\r\n]+\r?\nSent: [^\r\n]*)/i,
-      1,
-    )[0]!
-    .trim();
+  // Outlook web omits the separator the parser uses to recognize its history block.
+  const normalized = text.replace(
+    /\r?\n(?=From: [^\r\n]+\r?\nSent:)/gi,
+    "\n________________________________\n",
+  );
+  return new EmailReplyParser().parseReply(normalized).trim();
 }
 
 @Injectable()
@@ -113,6 +116,7 @@ export class InboundMailService {
 
   async settings(auth: AuthContext) {
     return this.admin(auth, async (tx) => {
+      await ensurePlatformInbox(tx, auth.tenantId, auth.id);
       const [settings, addresses, departments, categories] = await Promise.all([
         tx.inboundMailSettings.findUnique({ where: { tenantId: auth.tenantId } }),
         tx.inboundMailAddress.findMany({
@@ -132,6 +136,22 @@ export class InboundMailService {
         revision: settings?.revision ?? 0,
         configured: !!settings,
         secretConfigured: !!settings?.encryptedWebhookSecret,
+        platformAddress: platformInboundAddress(auth.view.tenant.slug) ?? null,
+        forwarding: {
+          status: !settings
+            ? "not_set_up"
+            : settings.forwardingProbeHash
+              ? settings.forwardingProbeStartedAt &&
+                Date.now() - settings.forwardingProbeStartedAt.getTime() <= 30 * 60000
+                ? "pending"
+                : "problem"
+              : settings.forwardingVerifiedAt
+                ? "working"
+                : "not_set_up",
+          lastReceivedAt: settings?.lastReceivedAt?.toISOString() ?? null,
+          startedAt: settings?.forwardingProbeStartedAt?.toISOString() ?? null,
+          verifiedAt: settings?.forwardingVerifiedAt?.toISOString() ?? null,
+        },
         triageDepartmentId: settings?.triageDepartmentId ?? null,
         triageCategoryId: settings?.triageCategoryId ?? null,
         allowUnverifiedSenders: settings?.allowUnverifiedSenders ?? false,
@@ -177,7 +197,7 @@ export class InboundMailService {
         throw new BadRequestException(
           "Choose an active triage queue, general category, and staffed group",
         );
-      return tx.inboundMailSettings.upsert({
+      const saved = await tx.inboundMailSettings.upsert({
         where: { tenantId: auth.tenantId },
         create: {
           tenantId: auth.tenantId,
@@ -192,6 +212,40 @@ export class InboundMailService {
           allowUnverifiedSenders: value.allowUnverifiedSenders,
         },
       });
+      await ensurePlatformInbox(tx, auth.tenantId, auth.id);
+      return { revision: saved.revision };
+    });
+  }
+
+  async checkForwarding(auth: AuthContext) {
+    return this.admin(auth, async (tx) => {
+      await ensurePlatformInbox(tx, auth.tenantId, auth.id);
+      const settings = await tx.inboundMailSettings.findUnique({
+        where: { tenantId: auth.tenantId },
+      });
+      if (!settings || !platformInboundAddress(auth.view.tenant.slug))
+        throw new BadRequestException(
+          "Configure the platform inbound domain and triage route first",
+        );
+      const testCode = randomBytes(16).toString("hex"),
+        now = new Date();
+      await tx.inboundMailSettings.update({
+        where: { tenantId: auth.tenantId },
+        data: {
+          forwardingProbeHash: createHash("sha256").update(testCode).digest("hex"),
+          forwardingProbeStartedAt: now,
+        },
+      });
+      await tx.configAudit.create({
+        data: {
+          tenantId: auth.tenantId,
+          actorId: auth.id,
+          entityId: auth.tenantId,
+          action: "inbound.forwarding_check_started",
+          detail: {},
+        },
+      });
+      return { testCode, expiresAt: new Date(now.getTime() + 30 * 60000).toISOString() };
     });
   }
 
@@ -215,6 +269,16 @@ export class InboundMailService {
 
   async saveAddress(auth: AuthContext, input: unknown) {
     const value = inboundMailAddressSchema.parse(input);
+    const platformAddress = platformInboundAddress(auth.view.tenant.slug);
+    if (value.address.includes("+t."))
+      throw new BadRequestException("Reply tokens cannot be configured as addresses");
+    if (platformAddress && value.address.split("@")[1] === platformAddress.split("@")[1]) {
+      const local = value.address.split("@")[0]!;
+      if (local.split("+")[0] !== auth.view.tenant.slug)
+        throw new BadRequestException(
+          "Use your organisation's platform address or department alias",
+        );
+    }
     return this.admin(auth, async (tx) => {
       const [settings, department, category, staffed] = await Promise.all([
         tx.inboundMailSettings.findUnique({ where: { tenantId: auth.tenantId } }),
@@ -243,7 +307,7 @@ export class InboundMailService {
           "Choose a configured tenant, active department, matching category, and staffed group",
         );
       if (
-        value.isGeneral &&
+        (value.isGeneral || value.address === platformAddress) &&
         (department.id !== settings.triageDepartmentId ||
           value.categoryId !== settings.triageCategoryId)
       )
@@ -364,7 +428,36 @@ export class InboundMailService {
     });
   }
 
+  async smtpRecipient(recipient: string) {
+    const destination = recipientAddress(recipient.toLowerCase());
+    const [lookup] = await this.db.$queryRaw<{ tenant_id: string; address_id: string | null }[]>`
+      SELECT tenant_id,address_id FROM resolve_inbound_address(${destination.address})`;
+    if (!lookup) return false;
+    const domain = platformInboundAddress("placeholder")?.split("@")[1];
+    if (domain && destination.address.split("@")[1] === domain) {
+      const slug = destination.address.split("@")[0]!.split("+")[0]!;
+      const [tenant] = await this.db.$queryRaw<
+        { tenant_id: string }[]
+      >`SELECT tenant_id FROM resolve_active_tenant_host(${slug})`;
+      if (tenant?.tenant_id !== lookup.tenant_id) return false;
+    }
+    return true;
+  }
+
+  async acceptSmtp(input: InboundMessageInput) {
+    if (!(await this.smtpRecipient(input.recipient)))
+      throw new UnauthorizedException("Invalid inbound recipient");
+    return this.acceptMessage(input);
+  }
+
   async accept(input: unknown, timestamp: string, signature: string, rawBody?: Buffer) {
+    return this.acceptMessage(input, { timestamp, signature, rawBody });
+  }
+
+  private async acceptMessage(
+    input: unknown,
+    webhook?: { timestamp: string; signature: string; rawBody?: Buffer },
+  ) {
     const message = TestInboundAdapter.normalize(input);
     const destination = recipientAddress(message.recipient);
     const [lookup] = await this.db.$queryRaw<{ tenant_id: string; address_id: string | null }[]>`
@@ -375,14 +468,19 @@ export class InboundMailService {
       const settings = await tx.inboundMailSettings.findUnique({
         where: { tenantId: lookup.tenant_id },
       });
-      if (!settings?.encryptedWebhookSecret)
+      if (!settings || (webhook && !settings.encryptedWebhookSecret))
         throw new UnauthorizedException("Invalid inbound request");
-      const secret = decryptSecret(
-        settings.encryptedWebhookSecret,
-        `inbound-mail:${lookup.tenant_id}`,
-      );
-      if (!rawBody || !validWebhookSignature(timestamp, rawBody, signature, secret))
-        throw new UnauthorizedException("Invalid inbound request");
+      if (webhook) {
+        const secret = decryptSecret(
+          settings.encryptedWebhookSecret!,
+          `inbound-mail:${lookup.tenant_id}`,
+        );
+        if (
+          !webhook.rawBody ||
+          !validWebhookSignature(webhook.timestamp, webhook.rawBody, webhook.signature, secret)
+        )
+          throw new UnauthorizedException("Invalid inbound request");
+      }
       if (
         await tx.inboundMessage.findUnique({
           where: {
@@ -393,13 +491,21 @@ export class InboundMailService {
       )
         return { accepted: true };
 
+      const probeCode = message.subject.match(/Astrama forwarding check ([a-f0-9]{32})/i)?.[1];
+      const probeMatched = await consumeForwardingProbe(tx, lookup.tenant_id, probeCode);
+      await tx.inboundMailSettings.update({
+        where: { tenantId: lookup.tenant_id },
+        data: {
+          lastReceivedAt: new Date(),
+        },
+      });
       const ownAddresses = (
         await tx.inboundMailAddress.findMany({
           where: { tenantId: lookup.tenant_id },
           select: { address: true },
         })
       ).map((row) => row.address);
-      const loop = isLoopMessage(message, ownAddresses, appHost);
+      const loop = probeMatched || isLoopMessage(message, ownAddresses, appHost);
       let rateLimited = false;
       if (!loop) {
         const [limit] = await tx.$queryRaw<{ message_count: number }[]>`
@@ -434,12 +540,17 @@ export class InboundMailService {
           replyTokenHash: destination.token ? replyTokenHash(destination.token) : null,
           kind: message.kind,
           bounceFor: message.bounceFor,
-          subject: rateLimited ? "" : message.subject,
-          textBody: rateLimited ? "" : message.text,
-          htmlBody: !rateLimited && message.html ? sanitizeHtml(message.html, allowedHtml) : null,
+          subject: probeMatched ? "Astrama forwarding check" : rateLimited ? "" : message.subject,
+          textBody: rateLimited || probeMatched ? "" : message.text,
+          htmlBody:
+            !rateLimited && !probeMatched && message.html
+              ? sanitizeHtml(message.html, allowedHtml)
+              : null,
           headers: message.headers as Prisma.InputJsonValue,
           authResults: message.authResults as Prisma.InputJsonValue,
-          attachments: (rateLimited ? [] : message.attachments) as unknown as Prisma.InputJsonValue,
+          attachments: (rateLimited || probeMatched
+            ? []
+            : message.attachments) as unknown as Prisma.InputJsonValue,
           status: loop || rateLimited ? "ignored" : "queued",
           lastError: rateLimited ? "rate_limited" : null,
           ...(rateLimited ? { processedAt: new Date() } : {}),
@@ -1058,6 +1169,9 @@ export class InboundMailAdminController {
   }
   @Post("secret") rotateSecret(@Req() request: AuthRequest) {
     return this.inbound.rotateSecret(request.auth);
+  }
+  @Post("check") checkForwarding(@Req() request: AuthRequest) {
+    return this.inbound.checkForwarding(request.auth);
   }
   @Post("addresses") saveAddress(@Req() request: AuthRequest) {
     return this.inbound.saveAddress(request.auth, request.body);

@@ -26,6 +26,7 @@ import { encryptSecret, decryptSecret } from "../../mfa.js";
 import { paymentProvider } from "./payment-provider.js";
 import { platformMode, tenantOrigin, validTenantSlug } from "../../platform.js";
 import { brandedText, brandingUrl } from "../../branding.js";
+import { ensurePlatformInbox } from "../../platform-inbox.js";
 
 const signupSchema = z
   .object({
@@ -359,6 +360,20 @@ export class SaasService {
             ${Number(process.env.DEFAULT_TRIAL_SEAT_LIMIT ?? 25)}::integer,${JSON.stringify(template)}::jsonb
           )`;
       }
+      const provisioned = await this.db.signupRequest.findUniqueOrThrow({
+        where: { id: signup.id },
+      });
+      if (provisioned.provisionedTenantId)
+        await this.db.withTenant(provisioned.provisionedTenantId, async (tx) => {
+          const admin = await tx.user.findFirstOrThrow({
+            where: {
+              tenantId: provisioned.provisionedTenantId!,
+              email: signup.adminEmail,
+              role: "admin",
+            },
+          });
+          await ensurePlatformInbox(tx, provisioned.provisionedTenantId!, admin.id);
+        });
       await this.db.signupProvisionJob.update({
         where: { id: job.id },
         data: { status: "complete", completedAt: new Date(), lastError: null },

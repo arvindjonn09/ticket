@@ -15,8 +15,10 @@ const allowed = new Set([
 const rejected = [];
 
 for (const [expression, dependencies] of Object.entries(packages)) {
-  // type-fest offers a choice: this application selects its MIT licence.
-  const selected = expression === "(MIT OR CC0-1.0)" ? "MIT" : expression;
+  // Select MIT explicitly for type-fest and @zone-eu/mailsplit's dual licences.
+  const selected = ["(MIT OR CC0-1.0)", "(MIT OR EUPL-1.1+)"].includes(expression)
+    ? "MIT"
+    : expression;
   const ids =
     selected.match(/\b(?:MIT-0|MIT|Apache-2\.0|BSD-2-Clause|BSD-3-Clause|0BSD|ISC)\b/g) ?? [];
   const remainder = selected

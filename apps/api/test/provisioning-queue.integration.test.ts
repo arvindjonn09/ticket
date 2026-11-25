@@ -89,14 +89,25 @@ describe.skipIf(!configured)("real provisioning queue delivery", () => {
         .toBeTruthy();
       const signup = await owner.signupRequest.findUniqueOrThrow({ where: { id: signupId } });
       tenantId = signup.provisionedTenantId!;
-      expect(
-        await owner.signupProvisionJob.findUniqueOrThrow({
-          where: { signupId },
-          select: { status: true },
-        }),
-      ).toEqual({ status: "complete" });
+      await expect
+        .poll(
+          async () =>
+            (
+              await owner.signupProvisionJob.findUniqueOrThrow({
+                where: { signupId },
+                select: { status: true },
+              })
+            ).status,
+          { timeout: 30000, interval: 100 },
+        )
+        .toBe("complete");
       expect(await owner.tenant.count({ where: { slug } })).toBe(1);
       expect(await owner.user.count({ where: { tenantId, role: "admin" } })).toBe(1);
+      expect(
+        await owner.inboundMailAddress.findUniqueOrThrow({
+          where: { address: `${slug}@in.astrama.test` },
+        }),
+      ).toMatchObject({ tenantId, isGeneral: true });
 
       // Duplicate dispatch (now with generated queue IDs) and a retry must not
       // create a second tenant for the same verified signup.

@@ -28,6 +28,15 @@ export const inboundMailViewSchema = z.object({
   revision: z.number().int().nonnegative(),
   configured: z.boolean(),
   secretConfigured: z.boolean(),
+  platformAddress: z.string().email().nullable().optional(),
+  forwarding: z
+    .object({
+      status: z.enum(["not_set_up", "pending", "working", "problem"]),
+      lastReceivedAt: z.string().nullable(),
+      startedAt: z.string().nullable(),
+      verifiedAt: z.string().nullable(),
+    })
+    .optional(),
   triageDepartmentId: z.string().uuid().nullable(),
   triageCategoryId: z.string().uuid().nullable(),
   allowUnverifiedSenders: z.boolean(),

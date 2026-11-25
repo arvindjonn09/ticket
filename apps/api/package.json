@@ -39,7 +39,11 @@
     "rxjs": "^7.8.2",
     "sanitize-html": "^2.18.2",
     "stripe": "^23.1.0",
-    "zod": "^4.6.6"
+    "zod": "^4.6.6",
+    "smtp-server": "3.21.7",
+    "mailparser": "3.15.0",
+    "mailauth": "8.1.0",
+    "email-reply-parser": "3.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
+import nodemailer from "nodemailer";
+import { createMailIntakeServer } from "../src/mail-intake.server.js";
+import { Database } from "../dist/database.js";
+import { consumeForwardingProbe } from "../src/platform-inbox.js";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { argon2id, hash } from "argon2";
@@ -626,4 +630,209 @@ describe.skipIf(!configured)("inbound mail PostgreSQL acceptance", () => {
       }
     },
   );
+  it("receives real SMTP into durable intake, accepts forwarded DKIM, and triages a spoofed From without trusting supplied headers", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const key = publicKey.export({ type: "spki", format: "der" }).toString("base64");
+    const server = createMailIntakeServer({
+      resolveRecipient: (recipient) => service.smtpRecipient(recipient),
+      accept: (input) => service.acceptSmtp(input),
+      trustedTestOptions: {
+        resolver: async (name, type) => {
+          if (type === "TXT" && name === "inbound.test") return [["v=spf1 ip4:192.0.2.1 -all"]];
+          if (type === "TXT" && name === "_dmarc.inbound.test") return [["v=DMARC1; p=reject"]];
+          if (type === "TXT" && name === "fixture._domainkey.inbound.test")
+            return [[`v=DKIM1; k=rsa; p=${key}`]];
+          throw Object.assign(new Error("Fixture DNS absent"), { code: "ENODATA" });
+        },
+      },
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.server.address() as { port: number }).port;
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port, ignoreTLS: true });
+    const signedId = `<smtp-${randomUUID()}@inbound.test>`,
+      spoofedId = `<spoof-${randomUUID()}@inbound.test>`;
+    try {
+      await expect(
+        transport.sendMail({
+          from: "employee@inbound.test",
+          to: "unknown@inbound.test",
+          text: "Refuse unknown",
+        }),
+      ).rejects.toMatchObject({ responseCode: 550 });
+      const signed = await nodemailer
+        .createTransport({
+          streamTransport: true,
+          buffer: true,
+          dkim: {
+            domainName: "inbound.test",
+            keySelector: "fixture",
+            privateKey: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+          },
+        })
+        .sendMail({
+          from: "employee@inbound.test",
+          to: "other@inbound.test",
+          messageId: signedId,
+          subject: "Forwarded signed fixture",
+          text: "Please help with this forwarded message.",
+        });
+      await transport.sendMail({
+        envelope: { from: "employee@inbound.test", to: address },
+        raw: signed.message as Buffer,
+      });
+      await transport.sendMail({
+        envelope: { from: "employee@inbound.test", to: address },
+        raw: signed.message as Buffer,
+      });
+      await transport.sendMail({
+        from: "employee@inbound.test",
+        to: address,
+        messageId: spoofedId,
+        subject: "Spoofed SMTP fixture",
+        text: "Do not impersonate a known employee.",
+        headers: { "Authentication-Results": "forged; dmarc=pass; dkim=pass; spf=pass" },
+      });
+      await service.dispatch();
+      const verified = await owner.inboundMessage.findUniqueOrThrow({
+        where: { tenantId_messageId: { tenantId, messageId: signedId } },
+      });
+      expect(await owner.inboundMessage.count({ where: { tenantId, messageId: signedId } })).toBe(
+        1,
+      );
+      expect(verified.authResults).toEqual({ spf: "fail", dkim: "pass", dmarc: "pass" });
+      expect(
+        await owner.ticket.findUniqueOrThrow({ where: { id: verified.ticketId! } }),
+      ).toMatchObject({ tenantId, callerId: employeeId, inboundUnverified: false });
+      const spoof = await owner.inboundMessage.findUniqueOrThrow({
+        where: { tenantId_messageId: { tenantId, messageId: spoofedId } },
+      });
+      expect(spoof.authResults).toMatchObject({ dmarc: "fail" });
+      const triaged = await owner.ticket.findUniqueOrThrow({ where: { id: spoof.ticketId! } });
+      expect(triaged).toMatchObject({ tenantId, departmentId, inboundUnverified: true });
+      expect(triaged.callerId).not.toBe(employeeId);
+      expect(
+        await owner.inboundMessage.count({
+          where: { tenantId: otherTenantId, messageId: { in: [signedId, spoofedId] } },
+        }),
+      ).toBe(0);
+    } finally {
+      transport.close();
+      await new Promise<void>((resolve) => server.close(resolve));
+    }
+  }, 30000);
+
+  it("checks forwarding with a hashed single-use probe and never returns stored secrets", async () => {
+    vi.stubEnv("INBOUND_MAIL_DOMAIN", "in.astrama.test");
+    const admin = await owner.user.create({
+      data: {
+        tenantId,
+        name: "Forwarding admin",
+        email: `${randomUUID()}@admin.test`,
+        passwordHash: "!",
+        role: "admin",
+        mfaEnrolled: true,
+        mfaSecret: encryptSecret("JBSWY3DPEHPK3PXP", "fixture"),
+      },
+    });
+    const token = randomUUID(),
+      csrf = randomUUID();
+    await owner.session.create({
+      data: {
+        tenantId,
+        userId: admin.id,
+        tokenHash: createHash("sha256").update(token).digest("hex"),
+        csrfToken: csrf,
+        mfaVerified: true,
+        expiresAt: new Date(Date.now() + 3600000),
+      },
+    });
+    const headers = {
+      origin: process.env.APP_ORIGIN!,
+      cookie: `astrama_session=${token}`,
+      "x-csrf-token": csrf,
+    };
+    try {
+      const foreignAlias = await app.inject({
+        method: "POST",
+        url: "/api/admin/inbound-mail/addresses",
+        headers,
+        payload: {
+          address: "another-organisation@in.astrama.test",
+          departmentId,
+          categoryId,
+          isGeneral: false,
+        },
+      });
+      expect(foreignAlias.statusCode).toBe(400);
+      const start = await app.inject({
+        method: "POST",
+        url: "/api/admin/inbound-mail/check",
+        headers,
+        payload: {},
+      });
+      expect(start.statusCode, start.body).toBe(201);
+      const code = start.json().testCode as string;
+      const settings = await owner.inboundMailSettings.findUniqueOrThrow({ where: { tenantId } });
+      expect(settings.forwardingProbeHash).toBe(createHash("sha256").update(code).digest("hex"));
+      const view = () => app.inject({ method: "GET", url: "/api/admin/inbound-mail", headers });
+      expect((await view()).json()).toMatchObject({
+        platformAddress: `${tenantSlug}@in.astrama.test`,
+        forwarding: { status: "pending" },
+      });
+      expect(
+        await owner.inboundMailAddress.findUniqueOrThrow({ where: { address } }),
+      ).toMatchObject({ isGeneral: true });
+      expect(
+        await owner.inboundMailAddress.findUniqueOrThrow({
+          where: { address: `${tenantSlug}@in.astrama.test` },
+        }),
+      ).toMatchObject({ isGeneral: false });
+      const input = message({
+        recipient: `${tenantSlug}@in.astrama.test`,
+        subject: `FW: Astrama forwarding check ${code}`,
+      });
+      await service.acceptSmtp(input);
+      const completed = await view();
+      expect(completed.json().forwarding.status).toBe("working");
+      expect(completed.body).not.toContain(code);
+      expect(completed.body).not.toContain(settings.forwardingProbeHash!);
+      expect(completed.body).not.toContain(settings.encryptedWebhookSecret!);
+      const probe = await owner.inboundMessage.findUniqueOrThrow({
+        where: { tenantId_messageId: { tenantId, messageId: input.messageId } },
+      });
+      expect(probe).toMatchObject({ status: "ignored", textBody: "", ticketId: null });
+      const replacement = await app.inject({
+        method: "POST",
+        url: "/api/admin/inbound-mail/check",
+        headers,
+        payload: {},
+      });
+      const db = app.get(Database);
+      expect(
+        await db.withTenant(tenantId, (tx) => consumeForwardingProbe(tx, tenantId, code)),
+      ).toBe(false);
+      expect((await view()).json().forwarding.status).toBe("pending");
+      const consumed = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          db.withTenant(tenantId, (tx) =>
+            consumeForwardingProbe(tx, tenantId, replacement.json().testCode),
+          ),
+        ),
+      );
+      expect(consumed.filter(Boolean)).toHaveLength(1);
+      await app.inject({
+        method: "POST",
+        url: "/api/admin/inbound-mail/check",
+        headers,
+        payload: {},
+      });
+      await owner.inboundMailSettings.update({
+        where: { tenantId },
+        data: { forwardingProbeStartedAt: new Date(Date.now() - 31 * 60000) },
+      });
+      expect((await view()).json().forwarding.status).toBe("problem");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

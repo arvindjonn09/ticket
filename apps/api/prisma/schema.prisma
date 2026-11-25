@@ -364,6 +364,10 @@ model InboundMailSettings {
   triageCategoryId       String     @map("triage_category_id") @db.Uuid
   encryptedWebhookSecret String?    @map("encrypted_webhook_secret")
   allowUnverifiedSenders Boolean    @default(false) @map("allow_unverified_senders")
+  lastReceivedAt DateTime? @map("last_received_at") @db.Timestamptz(6)
+  forwardingProbeHash String? @map("forwarding_probe_hash")
+  forwardingProbeStartedAt DateTime? @map("forwarding_probe_started_at") @db.Timestamptz(6)
+  forwardingVerifiedAt DateTime? @map("forwarding_verified_at") @db.Timestamptz(6)
   tenant                 Tenant     @relation(fields: [tenantId], references: [id])
   triageDepartment       Department @relation("triageDepartment", fields: [tenantId, triageDepartmentId], references: [tenantId, id])
   triageCategory         Category   @relation("triageCategory", fields: [tenantId, triageCategoryId], references: [tenantId, id])

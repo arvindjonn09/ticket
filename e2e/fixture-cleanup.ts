@@ -21,6 +21,10 @@ export async function cleanupFixture(
       });
       await tx.user.updateMany({ where: { tenantId }, data: { managerId: null } });
       for (const table of [
+        "inbound_messages",
+        "inbound_sender_rates",
+        "inbound_mail_addresses",
+        "inbound_mail_settings",
         "automation_actions",
         "automation_settings",
         "invitation_mails",

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { slaSettingsSchema } from "@astrama/contracts";
 import { encryptSecret } from "./mfa.js";
 import { platformConfigError, tenantOrigin, validTenantSlug } from "./platform.js";
+import { ensurePlatformInbox } from "./platform-inbox.js";
 
 export const provisionSchema = z
   .object({
@@ -137,6 +138,7 @@ export async function provisionOrganisation(body: unknown, options: ProvisionOpt
           settings: starter.sla,
         },
       });
+      await ensurePlatformInbox(tx, tenantId, userId);
       await tx.invitationMail.create({ data: { tenantId, userId, invitationHash, encryptedUrl } });
       await tx.configAudit.create({
         data: {

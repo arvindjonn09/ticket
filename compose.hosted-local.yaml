@@ -13,6 +13,25 @@ x-hosted-env: &hosted
   SMTP_PORT: 1025
   SMTP_FROM: Astrama <service-desk@astrama.localhost>
 services:
+  mail-intake:
+    extends: { file: compose.yaml, service: api }
+    profiles: ["mail-intake"]
+    command: ["node", "apps/api/dist/mail-intake.js"]
+    environment:
+      <<: *hosted
+      MAIL_INTAKE_PORT: "2525"
+    ports: !override ["127.0.0.1:2525:2525"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(2525,'127.0.0.1');s.once('connect',()=>{s.destroy();process.exit(0)});s.once('error',()=>process.exit(1));s.setTimeout(3000,()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 4s
+      retries: 5
   db:
     extends: { file: compose.yaml, service: db }
     ports: !override []
